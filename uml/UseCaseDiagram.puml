@@ -1,0 +1,95 @@
+@startuml MinLish_Web_UseCase
+
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "User\n(Người học)" as User
+actor "Admin\n(Quản trị viên)" as Admin
+actor "System\n(Hệ thống tự động)" as System
+
+rectangle "MinLish Web Platform" {
+  
+  package "Authentication" {
+    usecase UC1 as "Đăng ký tài khoản"
+    usecase UC2 as "Đăng nhập"
+    usecase UC3 as "Xác thực email (Link/OTP)"
+    usecase UC4 as "Quên mật khẩu"
+    usecase UC5 as "Cập nhật hồ sơ"
+    usecase UC6 as "Đăng nhập Google"
+  }
+  
+  package "Vocabulary Management (Extended)" {
+    usecase UC7 as "Tạo bộ từ vựng"
+    usecase UC8 as "Thêm/Sửa/Xóa từ vựng"
+    usecase UC11 as "Import từ vựng (CSV/Excel)"
+    usecase UC12 as "Export bộ từ (CSV/PDF)"
+    usecase UC13 as "Tìm kiếm & Lọc từ nâng cao"
+    usecase UC14 as "Gắn tag phân loại"
+  }
+  
+  package "Learning & Practice" {
+    usecase UC15 as "Học flashcard"
+    usecase UC20 as "Làm bài tập ôn luyện"
+    usecase UC23 as "Ôn tập theo thuật toán SRS"
+  }
+  
+  package "Progress & Detailed Analytics" {
+    usecase UC24 as "Xem dashboard tổng thể"
+    usecase UC25 as "Phân tích biểu đồ tiến độ"
+    usecase UC28 as "Ước lượng level"
+  }
+  
+  package "Admin Panel (Web Only)" {
+    usecase UC32 as "Quản lý người dùng (Ban/Unban)"
+    usecase UC33 as "Xem thống kê toàn hệ thống"
+    usecase UC34 as "Tạo bộ từ mẫu hệ thống"
+    usecase UC39 as "Quản lý phân quyền & Cài đặt"
+  }
+  
+  package "Automated Tasks" {
+    usecase UC35 as "Tính toán SRS timing"
+    usecase UC36 as "Gửi Email tự động"
+  }
+}
+
+' User relationships
+User --> UC1
+User --> UC2
+User --> UC4
+User --> UC5
+User --> UC6
+
+User --> UC7
+User --> UC8
+User --> UC11
+User --> UC12
+User --> UC13
+User --> UC14
+
+User --> UC15
+User --> UC20
+User --> UC23
+
+User --> UC24
+User --> UC25
+User --> UC28
+
+' Admin relationships
+Admin --> UC2
+Admin --> UC5
+Admin --> UC32
+Admin --> UC33
+Admin --> UC34
+Admin --> UC39
+
+' System relationships
+System --> UC35
+System --> UC36
+
+' Dependencies & Includes
+UC1 ..> UC3 : <<include>>
+UC15 ..> UC35 : <<include>>
+UC23 ..> UC35 : <<include>>
+
+@enduml

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { loginUser, registerUser, refreshTokenService, logoutUser } from '../services/auth.service';
+import { loginUser, registerUser, refreshTokenService, logoutUser, verifyEmailOTP } from '../services/auth.service';
 import { sendSuccess } from '../utils/response.util';
 import { catchAsync } from '../utils/catchAsync';
 import { AppError } from '../utils/AppError';
@@ -138,7 +138,42 @@ export const logout = catchAsync(async (req: Request, res: Response) => {
  *         description: Dữ liệu đầu vào không hợp lệ
  */
 export const register = catchAsync(async (req: Request, res: Response) => {
-
   const result = await registerUser(req.body);
   sendSuccess(res, 'Registration successful', result, HttpStatus.CREATED);
+});
+
+/**
+ * @swagger
+ * /api/v1/auth/verify-email:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Xác thực email bằng OTP
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, otp]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: user@example.com
+ *               otp:
+ *                 type: string
+ *                 example: "123456"
+ *     responses:
+ *       200:
+ *         description: Xác thực thành công
+ *       400:
+ *         description: Mã OTP không hợp lệ hoặc đã hết hạn
+ *       404:
+ *         description: Không tìm thấy người dùng
+ *       422:
+ *         description: Dữ liệu đầu vào không hợp lệ
+ */
+export const verifyEmail = catchAsync(async (req: Request, res: Response) => {
+  const { email, otp } = req.body;
+  const result = await verifyEmailOTP(email, otp);
+  sendSuccess(res, result.message, null, HttpStatus.OK);
 });

@@ -99,18 +99,77 @@ const otpResetTemplate = (name: string, otp: string): string => `
 </html>
 `;
 
+/**
+ * Template email OTP đổi email
+ */
+const otpChangeEmailTemplate = (name: string, otp: string, newEmail: string): string => `
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Xác nhận thay đổi email - Minlish</title>
+</head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f4f7fe;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:40px auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <tr>
+      <td style="background:linear-gradient(135deg,#43cea2 0%,#185a9d 100%);padding:40px;text-align:center;">
+        <h1 style="color:#fff;margin:0;font-size:28px;font-weight:700;">🔁 Minlish</h1>
+        <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:14px;">Xác nhận thay đổi email</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:40px;">
+        <h2 style="color:#1a1a2e;font-size:22px;margin:0 0 16px;">Xin chào, ${name}!</h2>
+        <p style="color:#555;line-height:1.7;margin:0 0 24px;">
+          Bạn đang yêu cầu thay đổi email sang <strong>${newEmail}</strong>.
+          Sử dụng mã OTP bên dưới để xác nhận thay đổi email:
+        </p>
+        <div style="background:#f8f9ff;border:2px dashed #185a9d;border-radius:12px;padding:24px;text-align:center;margin:0 0 24px;">
+          <p style="color:#185a9d;font-size:12px;font-weight:600;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Mã OTP của bạn</p>
+          <p style="color:#1a1a2e;font-size:40px;font-weight:800;letter-spacing:8px;margin:0;font-family:monospace;">${otp}</p>
+          <p style="color:#aaa;font-size:13px;margin:8px 0 0;">Mã có hiệu lực trong <strong>10 phút</strong></p>
+        </div>
+        <p style="color:#888;font-size:13px;line-height:1.6;">Nếu bạn không yêu cầu thay đổi email này, hãy bỏ qua email này.</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="background:#f8f9ff;padding:24px;text-align:center;">
+        <p style="color:#aaa;font-size:13px;margin:0;">© 2025 Minlish. Email này được gửi tự động, vui lòng không reply.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`;
+
 // ─── Mail Service Functions ───────────────────────────────────────────────────
+
+const sendMailAndLog = async (options: Parameters<typeof transporter.sendMail>[0], label: string): Promise<void> => {
+  const info = await transporter.sendMail(options);
+  const accepted = Array.isArray(info.accepted) ? info.accepted.join(', ') : String(info.accepted);
+  const rejected = Array.isArray(info.rejected) ? info.rejected.join(', ') : String(info.rejected);
+
+  console.log(`📧 ${label} sent`, {
+    messageId: info.messageId,
+    accepted,
+    rejected,
+  });
+
+  if (info.rejected && info.rejected.length > 0) {
+    throw new Error(`Email rejected by SMTP: ${rejected}`);
+  }
+};
 
 /**
  * Gửi email chào mừng sau khi đăng ký
  */
 export const sendWelcomeEmail = async (to: string, name: string): Promise<void> => {
-  await transporter.sendMail({
+  await sendMailAndLog({
     from: `"Minlish 🎓" <${process.env.MAIL_USER}>`,
     to,
     subject: `Chào mừng ${name} đến với Minlish! 🎉`,
     html: welcomeTemplate(name),
-  });
+  }, 'Welcome email');
 };
 
 /**
@@ -121,10 +180,46 @@ export const sendPasswordResetEmail = async (
   name: string,
   otp: string
 ): Promise<void> => {
-  await transporter.sendMail({
+  await sendMailAndLog({
     from: `"Minlish 🔐" <${process.env.MAIL_USER}>`,
     to,
     subject: 'Đặt lại mật khẩu Minlish',
     html: otpResetTemplate(name, otp),
-  });
+  }, 'Password reset OTP');
 };
+<<<<<<< Updated upstream
+=======
+
+/**
+ * Gửi email OTP kích hoạt tài khoản
+ */
+export const sendOTPRegistrationEmail = async (
+  to: string,
+  name: string,
+  otp: string
+): Promise<void> => {
+  await sendMailAndLog({
+    from: `"Minlish 🎓" <${process.env.MAIL_USER}>`,
+    to,
+    subject: 'Kích hoạt tài khoản Minlish',
+    html: otpRegistrationTemplate(name, otp),
+  }, 'Registration OTP');
+};
+
+/**
+ * Gửi email OTP xác nhận đổi email
+ */
+export const sendEmailChangeRequestEmail = async (
+  to: string,
+  name: string,
+  otp: string,
+  newEmail: string
+): Promise<void> => {
+  await sendMailAndLog({
+    from: `"Minlish 🔁" <${process.env.MAIL_USER}>`,
+    to,
+    subject: 'Xác nhận thay đổi email Minlish',
+    html: otpChangeEmailTemplate(name, otp, newEmail),
+  }, 'Email change OTP');
+};
+>>>>>>> Stashed changes

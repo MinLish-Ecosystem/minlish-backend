@@ -9,15 +9,15 @@ const options: swaggerJsdoc.Options = {
       title: 'Minlish API',
       version: '1.0.0',
       description: `
-## Minlish — English Learning Platform API
+    ## Minlish — English Learning Platform API
 
-Tài liệu API tự động. Nhấn **Authorize** để nhập Access Token trước khi test các route được bảo vệ.
+    Tài liệu API tự động. Nhấn **Authorize** để nhập Access Token trước khi test các route được bảo vệ.
 
-### Cách sử dụng:
-1. Gọi \`POST /api/auth/login\` để lấy \`accessToken\`
-2. Nhấn nút **Authorize** (🔒) ở góc trên phải
-3. Nhập: \`Bearer <accessToken>\`
-4. Giờ bạn có thể gọi tất cả các API protected
+    ### Cách sử dụng:
+    1. Gọi \`POST /api/v1/auth/login\` để lấy \`accessToken\`
+    2. Nhấn nút **Authorize** (🔒) ở góc trên phải
+    3. Nhập: \`Bearer <accessToken>\`
+    4. Giờ bạn có thể gọi tất cả các API protected
       `,
     },
     servers: [

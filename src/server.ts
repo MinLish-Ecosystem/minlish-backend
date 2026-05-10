@@ -2,6 +2,7 @@ import './config/env'; // Validate biến môi trường ngay khi khởi động
 
 import app from './app';
 import { connectDB } from './config/db';
+import { verifyMailer } from './config/mailer';
 import { cleanExpiredTokens } from './utils/tokenBlacklist';
 
 const PORT = process.env.PORT || 3000;
@@ -27,6 +28,7 @@ function printDevBanner() {
 const startServer = async () => {
   try {
     await connectDB();
+    await verifyMailer();
     app.listen(PORT, () => {
       console.log(`✅ Server running at http://localhost:${PORT}`);
       console.log(`📚 Swagger UI: http://localhost:${PORT}/api-docs`);

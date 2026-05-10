@@ -7,8 +7,8 @@ import nodemailer from 'nodemailer';
 export const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.MAIL_USER,
-    pass: process.env.MAIL_PASS,
+    user: process.env.MAIL_USER?.trim(),
+    pass: process.env.MAIL_PASS?.replace(/\s+/g, ''),
   },
 });
 
@@ -20,6 +20,7 @@ export const verifyMailer = async (): Promise<void> => {
     await transporter.verify();
     console.log('📧 Gmail SMTP connected');
   } catch (error) {
-    console.warn('⚠️  Gmail SMTP not configured (set MAIL_USER & MAIL_PASS in .env)');
+    console.warn('⚠️  Gmail SMTP verification failed');
+    console.warn(error);
   }
 };

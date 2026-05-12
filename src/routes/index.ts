@@ -7,9 +7,9 @@ import adminRoutes from './admin.routes';
  * Router gốc — Mount tất cả sub-routers vào đây
  *
  * Cấu trúc URL:
- *   /api/auth/...     → auth.routes.ts
- *   /api/user/...     → user.routes.ts
- *   /api/admin/...    → admin.routes.ts
+ *   /api/v1/auth/...  → auth.routes.ts
+ *   /api/v1/user/...  → user.routes.ts
+ *   /api/v1/admin/... → admin.routes.ts
  *
  * Khi thêm module mới (ví dụ: lessons, vocabulary...):
  *   1. Tạo file src/routes/lesson.routes.ts

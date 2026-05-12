@@ -4,9 +4,11 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IOTP extends Document {
   email: string;
   otp: string;
-  type: 'verify_email' | 'reset_password';
+  type: 'verify_email' | 'reset_password' | 'change_email';
   expiresAt: Date;
   createdAt: Date;
+  // optional metadata (e.g., requestedBy, newEmail)
+  meta?: Record<string, any> | null;
 }
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
@@ -24,8 +26,12 @@ const OTPSchema = new Schema<IOTP>(
     },
     type: {
       type: String,
-      enum: ['verify_email', 'reset_password'],
+      enum: ['verify_email', 'reset_password', 'change_email'],
       required: true,
+    },
+    meta: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
     expiresAt: {
       type: Date,

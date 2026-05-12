@@ -1,7 +1,7 @@
 import { User } from '../models/User';
 import { OTP } from '../models/OTP';
 import { generateOTP, getOTPExpiresAt } from '../utils/otp.util';
-import { sendOTPRegistrationEmail } from './mail.service';
+import { sendOTPRegistrationEmail, sendPasswordResetEmail } from './mail.service';
 import {
   signAccessToken,
   signRefreshToken,
@@ -209,4 +209,78 @@ export const verifyEmailOTP = async (email: string, otp: string) => {
   await OTP.deleteOne({ _id: validOTP._id });
 
   return { message: 'Xác thực tài khoản thành công.' };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PASSWORD RESET SERVICE — Nhàn phụ trách
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ForgotPasswordInput {
+  email: string;
+}
+
+export interface ResetPasswordInput {
+  email: string;
+  otp: string;
+  newPassword: string;
+}
+
+export const requestPasswordReset = async (input: ForgotPasswordInput): Promise<{ message: string }> => {
+  const email = input.email.trim().toLowerCase();
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    throw new AppError('Không tìm thấy tài khoản với email này', HttpStatus.NOT_FOUND, ErrorCodes.USER_NOT_FOUND);
+  }
+
+  await OTP.deleteMany({ email, type: 'reset_password' });
+
+  const otpCode = generateOTP();
+  await OTP.create({
+    email,
+    otp: otpCode,
+    type: 'reset_password',
+    expiresAt: getOTPExpiresAt(10),
+  });
+
+  await sendPasswordResetEmail(user.email, user.name, otpCode);
+
+  return {
+    message: 'Mã OTP đặt lại mật khẩu đã được gửi tới email của bạn.',
+  };
+};
+
+export const resetPasswordWithOTP = async (input: ResetPasswordInput): Promise<{ message: string }> => {
+  const email = input.email.trim().toLowerCase();
+  const now = new Date();
+
+  const latestOTP = await OTP.findOne({ email, type: 'reset_password' }).sort({ createdAt: -1 });
+  const validOTP = await OTP.findOne({ email, otp: input.otp, type: 'reset_password' });
+
+  if (!latestOTP) {
+    throw new AppError('Mã OTP không hợp lệ', HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  if (latestOTP.expiresAt.getTime() < now.getTime()) {
+    throw new AppError('Mã OTP đã hết hạn', HttpStatus.GONE, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  if (!validOTP) {
+    throw new AppError('Mã OTP không chính xác', HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  const user = await User.findOne({ email }).select('+password +refreshToken');
+  if (!user) {
+    throw new AppError('Không tìm thấy người dùng', HttpStatus.NOT_FOUND, ErrorCodes.USER_NOT_FOUND);
+  }
+
+  user.password = input.newPassword;
+  user.refreshToken = null;
+  await user.save();
+
+  await OTP.deleteMany({ email, type: 'reset_password' });
+
+  return {
+    message: 'Đặt lại mật khẩu thành công.',
+  };
 };

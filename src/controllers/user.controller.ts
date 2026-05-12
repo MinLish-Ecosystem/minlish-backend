@@ -2,11 +2,16 @@
 // User Controller — Nhàn phụ trách
 // ─────────────────────────────────────────────────────────────────────────────
 import { Request, Response, NextFunction } from 'express';
-import { sendSuccess, sendError } from '../utils/response.util';
+import { sendSuccess } from '../utils/response.util';
+import { getUserById, updateUserProfile, requestEmailChange, confirmEmailChange } from '../services/user.service';
+import { AppError } from '../utils/AppError';
+import { HttpStatus } from '../constants/httpStatus';
+import { ErrorCodes } from '../constants/errorCodes';
+import { catchAsync } from '../utils/catchAsync';
 
 /**
  * @swagger
- * /api/user/profile:
+ * /api/v1/user/profile:
  *   get:
  *     tags: [User]
  *     summary: Lấy thông tin profile của người dùng hiện tại
@@ -25,7 +30,14 @@ export const getProfile = async (
 ): Promise<void> => {
 
   try {
-    sendError(res, 'Not implemented yet', 501);
+    const userId = (req.user?._id as string | undefined)?.toString();
+
+    if (!userId) {
+      throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
+    }
+
+    const profile = await getUserById(userId);
+    sendSuccess(res, 'Lấy thông tin profile thành công', profile);
   } catch (error) {
     next(error);
   }
@@ -33,7 +45,7 @@ export const getProfile = async (
 
 /**
  * @swagger
- * /api/user/profile:
+ * /api/v1/user/profile:
  *   put:
  *     tags: [User]
  *     summary: Cập nhật thông tin profile
@@ -48,21 +60,95 @@ export const getProfile = async (
  *             properties:
  *               name:
  *                 type: string
+ *               avatar:
+ *                 type: string
+ *                 format: uri
+ *                 description: URL to avatar image
+ *     description: Email cannot be changed via this endpoint. To change email use `/user/request-email-change` and `/user/confirm-email-change`.
  *     responses:
  *       200:
  *         description: Cập nhật thành công
  *       401:
  *         description: Chưa đăng nhập
  */
-export const updateProfile = async (
-  _req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const updateProfile = catchAsync(async (req: Request, res: Response) => {
+  const userId = (req.user?._id as string | undefined)?.toString();
 
-  try {
-    sendError(res, 'Not implemented yet', 501);
-  } catch (error) {
-    next(error);
+  if (!userId) {
+    throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
   }
-};
+
+  const profile = await updateUserProfile(userId, req.body);
+  sendSuccess(res, 'Cập nhật profile thành công', profile);
+});
+
+/**
+ * @swagger
+ * /api/v1/user/request-email-change:
+ *   post:
+ *     tags: [User]
+ *     summary: Yêu cầu thay đổi email (gửi OTP tới email mới)
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [newEmail]
+ *             properties:
+ *               newEmail:
+ *                 type: string
+ *                 format: email
+ *     responses:
+ *       200:
+ *         description: OTP đã được gửi tới email mới
+ *       400:
+ *         description: Email đã có người sử dụng
+ */
+export const requestEmailChangeController = catchAsync(async (req: Request, res: Response) => {
+  const userId = (req.user?._id as string | undefined)?.toString();
+  if (!userId) throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
+
+  const { newEmail } = req.body as { newEmail: string };
+  const result = await requestEmailChange(userId, newEmail);
+  sendSuccess(res, result.message, null);
+});
+
+/**
+ * @swagger
+ * /api/v1/user/confirm-email-change:
+ *   post:
+ *     tags: [User]
+ *     summary: Xác nhận thay đổi email bằng OTP
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [newEmail, otp]
+ *             properties:
+ *               newEmail:
+ *                 type: string
+ *                 format: email
+ *               otp:
+ *                 type: string
+ *                 example: "123456"
+ *     responses:
+ *       200:
+ *         description: Email được cập nhật thành công
+ *       400:
+ *         description: OTP không hợp lệ hoặc email đã tồn tại
+ */
+export const confirmEmailChangeController = catchAsync(async (req: Request, res: Response) => {
+  const userId = (req.user?._id as string | undefined)?.toString();
+  if (!userId) throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
+
+  const { newEmail, otp } = req.body as { newEmail: string; otp: string };
+  const result = await confirmEmailChange(userId, newEmail, otp);
+  sendSuccess(res, result.message, null);
+});

@@ -7,9 +7,9 @@ export interface IUser extends Document {
   email: string;
   password: string;
   role: 'user' | 'admin';
-  avatar?: string;
+  avatar: string | null;
   isVerified: boolean;
-  refreshToken?: string;
+  refreshToken: string | null;
   createdAt: Date;
   updatedAt: Date;
   // Method

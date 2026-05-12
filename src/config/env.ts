@@ -19,8 +19,14 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   
   // GMAIL SMTP
-  MAIL_USER: z.string().email(),
-  MAIL_PASS: z.string(),
+  MAIL_USER: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() : value),
+    z.string().email()
+  ),
+  MAIL_PASS: z.preprocess(
+    (value) => (typeof value === 'string' ? value.replace(/\s+/g, '').trim() : value),
+    z.string().min(1)
+  ),
 }).refine(data => data.MONGO_URI_LOCAL || data.MONGO_URI_ATLAS, {
   message: "Either MONGO_URI_LOCAL or MONGO_URI_ATLAS must be provided",
   path: ["MONGO_URI"],

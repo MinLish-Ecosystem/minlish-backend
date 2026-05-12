@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { getProfile, updateProfile } from '../controllers/user.controller';
+import { getProfile, updateProfile, requestEmailChangeController, confirmEmailChangeController } from '../controllers/user.controller';
 import { verifyToken } from '../middlewares/auth.middleware';
-import { updateProfileValidator } from '../validators/user.validator';
+import { updateProfileValidator, requestEmailChangeValidator, confirmEmailChangeValidator } from '../validators/user.validator';
 import { validate } from '../middlewares/validate.middleware';
 
 /**
@@ -16,10 +16,16 @@ const router = Router();
 // Tất cả routes trong file này đều yêu cầu đăng nhập
 // verifyToken được áp dụng cho từng route để rõ ràng
 
-// GET /api/user/profile
+// GET /api/v1/user/profile
 router.get('/profile', verifyToken, getProfile);
 
-// PUT /api/user/profile
+// PUT /api/v1/user/profile
 router.put('/profile', verifyToken, updateProfileValidator, validate, updateProfile);
+
+// POST /api/v1/user/request-email-change
+router.post('/request-email-change', verifyToken, requestEmailChangeValidator, validate, requestEmailChangeController);
+
+// POST /api/v1/user/confirm-email-change
+router.post('/confirm-email-change', verifyToken, confirmEmailChangeValidator, validate, confirmEmailChangeController);
 
 export default router;

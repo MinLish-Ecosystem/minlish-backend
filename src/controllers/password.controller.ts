@@ -1,12 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Password Controller — Nhàn phụ trách
 // ─────────────────────────────────────────────────────────────────────────────
-import { Request, Response, NextFunction } from 'express';
-import { sendSuccess, sendError } from '../utils/response.util';
+import { Request, Response } from 'express';
+import { sendSuccess } from '../utils/response.util';
+import { requestPasswordReset, resetPasswordWithOTP } from '../services/auth.service';
+import { HttpStatus } from '../constants/httpStatus';
+import { catchAsync } from '../utils/catchAsync';
 
 /**
  * @swagger
- * /api/auth/forgot-password:
+ * /api/v1/auth/forgot-password:
  *   post:
  *     tags: [Auth - Password]
  *     summary: Yêu cầu đặt lại mật khẩu (gửi OTP qua email)
@@ -25,22 +28,14 @@ import { sendSuccess, sendError } from '../utils/response.util';
  *       200:
  *         description: OTP đã được gửi qua email
  */
-export const forgotPassword = async (
-  _req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-
-  try {
-    sendError(res, 'Not implemented yet', 501);
-  } catch (error) {
-    next(error);
-  }
-};
+export const forgotPassword = catchAsync(async (req: Request, res: Response) => {
+  const result = await requestPasswordReset(req.body);
+  sendSuccess(res, result.message, null, HttpStatus.OK);
+});
 
 /**
  * @swagger
- * /api/auth/reset-password:
+ * /api/v1/auth/reset-password:
  *   post:
  *     tags: [Auth - Password]
  *     summary: Đặt lại mật khẩu bằng OTP
@@ -65,15 +60,7 @@ export const forgotPassword = async (
  *       400:
  *         description: OTP không hợp lệ hoặc đã hết hạn
  */
-export const resetPassword = async (
-  _req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-
-  try {
-    sendError(res, 'Not implemented yet', 501);
-  } catch (error) {
-    next(error);
-  }
-};
+export const resetPassword = catchAsync(async (req: Request, res: Response) => {
+  const result = await resetPasswordWithOTP(req.body);
+  sendSuccess(res, result.message, null, HttpStatus.OK);
+});

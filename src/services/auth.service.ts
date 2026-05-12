@@ -1,4 +1,7 @@
 import { User } from '../models/User';
+import { OTP } from '../models/OTP';
+import { generateOTP, getOTPExpiresAt } from '../utils/otp.util';
+import { sendOTPRegistrationEmail } from './mail.service';
 import {
   signAccessToken,
   signRefreshToken,
@@ -47,6 +50,11 @@ export const loginUser = async (input: LoginInput) => {
     throw new AppError('Invalid email or password', HttpStatus.UNAUTHORIZED, ErrorCodes.INVALID_CREDENTIALS);
   }
 
+  // Kiểm tra xác thực email
+  if (!user.isVerified) {
+    throw new AppError('Tài khoản chưa được kích hoạt. Vui lòng kiểm tra email.', HttpStatus.FORBIDDEN, ErrorCodes.EMAIL_NOT_VERIFIED);
+  }
+
   // 3. Tạo payload cho token
   const payload: TokenPayload = {
     userId: (user._id as any).toString(),
@@ -62,10 +70,14 @@ export const loginUser = async (input: LoginInput) => {
   user.refreshToken = refreshToken;
   await user.save();
 
+  // Tính toán redirectUrl dựa vào role
+  const redirectUrl = user.role === 'admin' ? '/admin/profile' : '/user/profile';
+
   // 6. Trả về data (không trả password)
   return {
     accessToken,
     refreshToken,
+    redirectUrl,
     user: {
       id: user._id,
       name: user.name,
@@ -126,6 +138,75 @@ export interface RegisterInput {
   password: string;
 }
 
-export const registerUser = async (_input: RegisterInput): Promise<any> => {
-  throw new Error('Not implemented');
+export const registerUser = async (input: RegisterInput): Promise<any> => {
+  const { name, email, password } = input;
+
+  // 1. Kiểm tra email đã tồn tại chưa
+  let user = await User.findOne({ email });
+
+  if (user) {
+    if (user.isVerified) {
+      // Nếu đã xác thực -> Báo lỗi trùng email
+      throw new AppError('Email đã được sử dụng', HttpStatus.CONFLICT, ErrorCodes.EMAIL_ALREADY_EXISTS);
+    } else {
+      // Nếu chưa xác thực -> Cập nhật thông tin (nếu có đổi) và gửi lại OTP mới
+      user.name = name;
+      user.password = password; // pre-save hook sẽ tự động hash lại password
+      await user.save();
+      
+      // Xoá OTP cũ (nếu chưa bị MongoDB xoá)
+      await OTP.deleteMany({ email, type: 'verify_email' });
+    }
+  } else {
+    // 2. Tạo user mới với isVerified = false
+    user = new User({
+      name,
+      email,
+      password, // Password sẽ tự động được hash qua pre-save hook
+      isVerified: false,
+    });
+    await user.save();
+  }
+
+  // 3. Tạo mã OTP mới
+  const otpCode = generateOTP();
+  const otpDoc = new OTP({
+    email,
+    otp: otpCode,
+    type: 'verify_email',
+    expiresAt: getOTPExpiresAt(10), // Hết hạn sau 10 phút
+  });
+  await otpDoc.save();
+
+  // 4. Gửi email kích hoạt
+  await sendOTPRegistrationEmail(email, name, otpCode);
+
+  return {
+    message: 'Mã OTP đã được gửi. Vui lòng kiểm tra email để kích hoạt tài khoản.',
+  };
+};
+
+/**
+ * Xác thực email bằng OTP
+ */
+export const verifyEmailOTP = async (email: string, otp: string) => {
+  const validOTP = await OTP.findOne({ email, otp, type: 'verify_email' });
+
+  if (!validOTP) {
+    throw new AppError('Mã OTP không hợp lệ hoặc đã hết hạn', HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  // Cập nhật trạng thái user
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw new AppError('Không tìm thấy người dùng', HttpStatus.NOT_FOUND, ErrorCodes.USER_NOT_FOUND);
+  }
+
+  user.isVerified = true;
+  await user.save();
+
+  // Xóa OTP đã sử dụng
+  await OTP.deleteOne({ _id: validOTP._id });
+
+  return { message: 'Xác thực tài khoản thành công.' };
 };

@@ -34,3 +34,18 @@ export const registerValidator = [
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
     .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
 ];
+
+/**
+ * Rules validate cho Verify Email
+ */
+export const verifyEmailValidator = [
+  body('email')
+    .notEmpty().withMessage('Email is required')
+    .isEmail().withMessage('Please provide a valid email')
+    .normalizeEmail(),
+
+  body('otp')
+    .notEmpty().withMessage('OTP is required')
+    .isLength({ min: 6, max: 6 }).withMessage('OTP must be exactly 6 characters')
+    .isNumeric().withMessage('OTP must contain only numbers'),
+];

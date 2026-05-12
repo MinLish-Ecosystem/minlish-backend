@@ -54,6 +54,48 @@ const welcomeTemplate = (name: string): string => `
 `;
 
 /**
+ * Template email OTP kích hoạt tài khoản
+ */
+const otpRegistrationTemplate = (name: string, otp: string): string => `
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Kích hoạt tài khoản - Minlish</title>
+</head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f4f7fe;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:40px auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <tr>
+      <td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:40px;text-align:center;">
+        <h1 style="color:#fff;margin:0;font-size:28px;font-weight:700;">🎓 Minlish</h1>
+        <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:14px;">Kích hoạt tài khoản</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:40px;">
+        <h2 style="color:#1a1a2e;font-size:22px;margin:0 0 16px;">Xin chào, ${name}!</h2>
+        <p style="color:#555;line-height:1.7;margin:0 0 24px;">
+          Cảm ơn bạn đã đăng ký tài khoản tại Minlish. 
+          Sử dụng mã OTP bên dưới để kích hoạt tài khoản của bạn:
+        </p>
+        <div style="background:#f8f9ff;border:2px dashed #667eea;border-radius:12px;padding:24px;text-align:center;margin:0 0 24px;">
+          <p style="color:#667eea;font-size:12px;font-weight:600;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Mã OTP của bạn</p>
+          <p style="color:#1a1a2e;font-size:40px;font-weight:800;letter-spacing:8px;margin:0;font-family:monospace;">${otp}</p>
+          <p style="color:#aaa;font-size:13px;margin:8px 0 0;">Mã có hiệu lực trong <strong>10 phút</strong></p>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td style="background:#f8f9ff;padding:24px;text-align:center;">
+        <p style="color:#aaa;font-size:13px;margin:0;">© 2025 Minlish. Email này được gửi tự động, vui lòng không reply.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`;
+
+/**
  * Template email OTP đặt lại mật khẩu
  */
 const otpResetTemplate = (name: string, otp: string): string => `
@@ -126,5 +168,21 @@ export const sendPasswordResetEmail = async (
     to,
     subject: 'Đặt lại mật khẩu Minlish',
     html: otpResetTemplate(name, otp),
+  });
+};
+
+/**
+ * Gửi email OTP kích hoạt tài khoản
+ */
+export const sendOTPRegistrationEmail = async (
+  to: string,
+  name: string,
+  otp: string
+): Promise<void> => {
+  await transporter.sendMail({
+    from: `"Minlish 🎓" <${process.env.MAIL_USER}>`,
+    to,
+    subject: 'Kích hoạt tài khoản Minlish',
+    html: otpRegistrationTemplate(name, otp),
   });
 };

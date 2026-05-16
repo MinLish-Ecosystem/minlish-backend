@@ -1,12 +1,39 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
 
+export type VocabCategory =
+  | "General"
+  | "Business"
+  | "IELTS"
+  | "TOEIC"
+  | "Travel"
+  | "Technology"
+  | "Academic"
+  | "Psychology"
+  | "Science"
+  | "Other";
+
+export type VocabLevel = "Beginner" | "Intermediate" | "Advanced" | "Academic";
+
+export type ColorTheme =
+  | "blue"
+  | "emerald"
+  | "amber"
+  | "purple"
+  | "rose"
+  | "cyan";
+
 export interface IVocabularySet extends Document {
   userId: Types.ObjectId;
   name: string;
   description?: string;
+  category: VocabCategory;
+  level: VocabLevel;
+  colorTheme: ColorTheme;
   tags: string[];
   isPublic: boolean;
   totalWords: number;
+  learnerCount: number;        // Số người đã clone bộ từ này về library
+  clonedFrom?: Types.ObjectId; // Ref đến set gốc nếu đây là bản copy
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +55,21 @@ const VocabularySetSchema = new Schema<IVocabularySet>(
       type: String,
       maxlength: [500, "Description cannot exceed 500 characters"],
     },
+    category: {
+      type: String,
+      enum: ["General", "Business", "IELTS", "TOEIC", "Travel", "Technology", "Academic", "Psychology", "Science", "Other"],
+      default: "General",
+    },
+    level: {
+      type: String,
+      enum: ["Beginner", "Intermediate", "Advanced", "Academic"],
+      default: "Intermediate",
+    },
+    colorTheme: {
+      type: String,
+      enum: ["blue", "emerald", "amber", "purple", "rose", "cyan"],
+      default: "purple",
+    },
     tags: {
       type: [String],
       default: [],
@@ -45,13 +87,32 @@ const VocabularySetSchema = new Schema<IVocabularySet>(
       default: 0,
       min: 0,
     },
+    learnerCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    clonedFrom: {
+      type: Schema.Types.ObjectId,
+      ref: "VocabularySet",
+    },
   },
   { timestamps: true },
 );
 
+// Compound indexes for common queries
 VocabularySetSchema.index({ userId: 1, createdAt: -1 });
 VocabularySetSchema.index({ tags: 1 });
-VocabularySetSchema.index({ isPublic: 1, totalWords: -1 });
+VocabularySetSchema.index({ isPublic: 1, learnerCount: -1 }); // Explore: sorted by popularity
+VocabularySetSchema.index({ isPublic: 1, createdAt: -1 });    // Explore: sorted by newest
+VocabularySetSchema.index({ isPublic: 1, category: 1, level: 1 }); // Explore: filter by category+level
+VocabularySetSchema.index({ userId: 1, category: 1 });         // My Library filter
+
+// Full-text search index — hỗ trợ ?q=ielts tìm trong name, description, tags
+VocabularySetSchema.index(
+  { name: "text", description: "text", tags: "text" },
+  { weights: { name: 10, tags: 5, description: 1 }, name: "vocab_text_search" }
+);
 
 export const VocabularySet = mongoose.model<IVocabularySet>(
   "VocabularySet",

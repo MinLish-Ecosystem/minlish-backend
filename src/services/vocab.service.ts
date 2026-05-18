@@ -2,6 +2,9 @@ import { Types } from "mongoose";
 import { VocabularySet } from "../models/VocabularySet";
 import { Word } from "../models/Word";
 import { LearningProgress } from "../models/LearningProgress";
+import { AppError } from "../utils/AppError";
+import { HttpStatus } from "../constants/httpStatus";
+import { ErrorCodes } from "../constants/errorCodes";
 import {
   VocabSetFilters,
   CreateSetDTO,
@@ -49,6 +52,72 @@ function buildSortOrder(sortBy?: string): Record<string, 1 | -1> {
   }
 }
 
+function mapSetToResponse(s: any): VocabSetResponse {
+  return {
+    id: s._id.toString(),
+    name: s.name,
+    description: s.description,
+    category: s.category,
+    level: s.level,
+    colorTheme: s.colorTheme,
+    tags: s.tags ?? [],
+    isPublic: Boolean(s.isPublic),
+    totalWords: s.totalWords ?? 0,
+    learnerCount: s.learnerCount ?? 0,
+    clonedFrom: s.clonedFrom ? s.clonedFrom.toString() : undefined,
+    createdAt: new Date(s.createdAt).toISOString(),
+    updatedAt: new Date(s.updatedAt).toISOString(),
+  };
+}
+
+function mapWordToResponse(w: any): WordResponse {
+  return {
+    id: w._id.toString(),
+    setId: w.setId.toString(),
+    word: w.word,
+    pronunciation: w.pronunciation,
+    partOfSpeech: w.partOfSpeech,
+    meaning: w.meaning,
+    descriptionEN: w.descriptionEN,
+    examples: w.examples ?? [],
+    synonyms: w.synonyms ?? [],
+    antonyms: w.antonyms ?? [],
+    collocations: w.collocations ?? [],
+    note: w.note,
+    imageUrl: w.imageUrl,
+    audioUrl: w.audioUrl,
+  };
+}
+
+function calcMasteryPct(progress?: { status: string; totalReviews: number; correctReviews: number }) {
+  if (!progress) return undefined;
+
+  if (progress.totalReviews > 0) {
+    return Math.max(0, Math.min(100, Math.round((progress.correctReviews / progress.totalReviews) * 100)));
+  }
+
+  switch (progress.status) {
+    case "learning":
+      return 25;
+    case "review":
+      return 75;
+    case "mastered":
+      return 100;
+    case "new":
+    default:
+      return 0;
+  }
+}
+
+async function ensureOwnedSet(setId: string, userId: string) {
+  const set = await VocabularySet.findOne({ _id: setId, userId: new Types.ObjectId(userId) });
+  if (!set) {
+    throw new AppError("Set not found or unauthorized", HttpStatus.NOT_FOUND, ErrorCodes.FORBIDDEN);
+  }
+
+  return set;
+}
+
 // ─── Vocabulary Set Services ─────────────────────────────────────────────────
 
 /**
@@ -66,16 +135,20 @@ export async function getUserSets(
   const match = buildSetFilter(filters, { userId: new Types.ObjectId(userId) });
   const sort  = buildSortOrder(filters.sortBy);
 
-  // TODO: Query VocabularySet với match + sort + skip + limit
-  // TODO: Count tổng để tính totalPages
-  // TODO: Populate thêm mastery % từ LearningProgress nếu cần
-  // Hint:
-  //   const [sets, total] = await Promise.all([
-  //     VocabularySet.find(match).sort(sort).skip(skip).limit(limit).lean(),
-  //     VocabularySet.countDocuments(match),
-  //   ]);
+  const [rawSets, total] = await Promise.all([
+    VocabularySet.find(match).sort(sort).skip(skip).limit(limit).lean(),
+    VocabularySet.countDocuments(match),
+  ]);
 
-  throw new Error("Not implemented");
+  return {
+    data: rawSets.map(mapSetToResponse),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 }
 
 /**
@@ -92,8 +165,20 @@ export async function getPublicSets(
   const match = buildSetFilter(filters, { isPublic: true });
   const sort  = buildSortOrder(filters.sortBy);
 
-  // TODO: Query VocabularySet public với match + sort + skip + limit
-  throw new Error("Not implemented");
+  const [rawSets, total] = await Promise.all([
+    VocabularySet.find(match).sort(sort).skip(skip).limit(limit).lean(),
+    VocabularySet.countDocuments(match),
+  ]);
+
+  return {
+    data: rawSets.map(mapSetToResponse),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 }
 
 /**
@@ -106,10 +191,18 @@ export async function getSetById(
   setId: string,
   userId?: string,
 ): Promise<VocabSetResponse> {
-  // TODO: VocabularySet.findById(setId)
-  // TODO: Nếu set không isPublic, kiểm tra set.userId === userId
-  // TODO: Nếu không hợp lệ → throw AppError 403
-  throw new Error("Not implemented");
+  const set = await VocabularySet.findById(setId).lean();
+
+  if (!set) {
+    throw new AppError("Set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  const isOwner = Boolean(userId) && set.userId.toString() === userId;
+  if (!set.isPublic && !isOwner) {
+    throw new AppError("Access denied", HttpStatus.FORBIDDEN, ErrorCodes.FORBIDDEN);
+  }
+
+  return mapSetToResponse(set);
 }
 
 /**
@@ -121,9 +214,12 @@ export async function createSet(
   userId: string,
   data: CreateSetDTO,
 ): Promise<VocabSetResponse> {
-  // TODO: new VocabularySet({ userId, ...data }).save()
-  // TODO: Map sang VocabSetResponse và return
-  throw new Error("Not implemented");
+  const set = await new VocabularySet({
+    userId: new Types.ObjectId(userId),
+    ...data,
+  }).save();
+
+  return mapSetToResponse(set.toObject());
 }
 
 /**
@@ -137,9 +233,17 @@ export async function updateSet(
   userId: string,
   data: Partial<CreateSetDTO>,
 ): Promise<VocabSetResponse> {
-  // TODO: VocabularySet.findOneAndUpdate({ _id: setId, userId }, data, { new: true })
-  // TODO: Nếu không tìm thấy → throw AppError 404
-  throw new Error("Not implemented");
+  const set = await VocabularySet.findOneAndUpdate(
+    { _id: setId, userId: new Types.ObjectId(userId) },
+    { $set: data },
+    { new: true },
+  ).lean();
+
+  if (!set) {
+    throw new AppError("Set not found or unauthorized", HttpStatus.NOT_FOUND, ErrorCodes.FORBIDDEN);
+  }
+
+  return mapSetToResponse(set);
 }
 
 /**
@@ -149,14 +253,17 @@ export async function updateSet(
  * TODO (Người 1): Implement body của function này
  */
 export async function deleteSet(setId: string, userId: string): Promise<void> {
-  // TODO: Tìm set, kiểm tra ownership
-  // TODO: Dùng Promise.all để xóa song song:
-  //   await Promise.all([
-  //     VocabularySet.deleteOne({ _id: setId, userId }),
-  //     Word.deleteMany({ setId }),
-  //     LearningProgress.deleteMany({ setId }),
-  //   ]);
-  throw new Error("Not implemented");
+  const set = await VocabularySet.findOne({ _id: setId, userId: new Types.ObjectId(userId) }).lean();
+
+  if (!set) {
+    throw new AppError("Not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  await Promise.all([
+    VocabularySet.deleteOne({ _id: setId, userId: new Types.ObjectId(userId) }),
+    Word.deleteMany({ setId: new Types.ObjectId(setId) }),
+    LearningProgress.deleteMany({ setId: new Types.ObjectId(setId) }),
+  ]);
 }
 
 /**
@@ -169,13 +276,41 @@ export async function clonePublicSet(
   sourceSetId: string,
   userId: string,
 ): Promise<VocabSetResponse> {
-  // TODO: Lấy sourceSet, kiểm tra isPublic
-  // TODO: Tạo set mới: { ...sourceSet fields, userId, clonedFrom: sourceSetId, isPublic: false }
-  // TODO: Lấy tất cả Words của sourceSet
-  // TODO: Tạo bản copy Words với setId mới
-  // TODO: Tăng learnerCount: VocabularySet.findByIdAndUpdate(sourceSetId, { $inc: { learnerCount: 1 } })
-  // TODO: Dùng session/transaction nếu cần atomicity
-  throw new Error("Not implemented");
+  const sourceSet = await VocabularySet.findById(sourceSetId).lean();
+
+  if (!sourceSet || !sourceSet.isPublic) {
+    throw new AppError("Public set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  const newSet = await new VocabularySet({
+    userId: new Types.ObjectId(userId),
+    name: sourceSet.name,
+    description: sourceSet.description,
+    category: sourceSet.category,
+    level: sourceSet.level,
+    colorTheme: sourceSet.colorTheme,
+    tags: sourceSet.tags,
+    isPublic: false,
+    clonedFrom: sourceSet._id,
+    totalWords: 0,
+    learnerCount: 0,
+  }).save();
+
+  const sourceWords = await Word.find({ setId: sourceSet._id }).lean();
+  if (sourceWords.length > 0) {
+    const clonedWords = sourceWords.map(({ _id, __v, createdAt, updatedAt, setId, ...word }) => ({
+      ...word,
+      setId: newSet._id,
+    }));
+
+    await Word.insertMany(clonedWords);
+    await VocabularySet.findByIdAndUpdate(newSet._id, { $set: { totalWords: sourceWords.length } });
+    newSet.totalWords = sourceWords.length;
+  }
+
+  await VocabularySet.findByIdAndUpdate(sourceSetId, { $inc: { learnerCount: 1 } });
+
+  return mapSetToResponse(newSet.toObject());
 }
 
 // ─── Word Services ───────────────────────────────────────────────────────────
@@ -192,11 +327,46 @@ export async function getWords(
   userId?: string,
   q?: string,
 ): Promise<WordResponse[]> {
-  // TODO: Kiểm tra quyền truy cập set
-  // TODO: Word.find({ setId, ...(q ? { $text: { $search: q } } : {}) }).lean()
-  // TODO: Nếu có userId, join LearningProgress để lấy status cho mỗi từ
-  // Hint: dùng aggregate hoặc lookup riêng
-  throw new Error("Not implemented");
+  const set = await VocabularySet.findById(setId).lean();
+
+  if (!set) {
+    throw new AppError("Not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  const isOwner = Boolean(userId) && set.userId.toString() === userId;
+  if (!set.isPublic && !isOwner) {
+    throw new AppError("Forbidden", HttpStatus.FORBIDDEN, ErrorCodes.FORBIDDEN);
+  }
+
+  const query: Record<string, unknown> = { setId: new Types.ObjectId(setId) };
+  if (q) {
+    query.$text = { $search: q };
+  }
+
+  const words = await Word.find(query).lean();
+
+  if (!userId) {
+    return words.map(mapWordToResponse);
+  }
+
+  const progress = await LearningProgress.find({
+    userId: new Types.ObjectId(userId),
+    setId: new Types.ObjectId(setId),
+  }).lean();
+
+  const progressMap = new Map(progress.map((item) => [item.wordId.toString(), item]));
+
+  return words.map((word) => {
+    const mapped = mapWordToResponse(word);
+    const wordProgress = progressMap.get(word._id.toString());
+
+    if (wordProgress) {
+      mapped.status = wordProgress.status;
+      mapped.masteryPct = calcMasteryPct(wordProgress);
+    }
+
+    return mapped;
+  });
 }
 
 /**
@@ -210,10 +380,16 @@ export async function addWord(
   userId: string,
   data: AddWordDTO,
 ): Promise<WordResponse> {
-  // TODO: Kiểm tra set thuộc về userId
-  // TODO: new Word({ setId, ...data }).save()
-  // TODO: VocabularySet.findByIdAndUpdate(setId, { $inc: { totalWords: 1 } })
-  throw new Error("Not implemented");
+  await ensureOwnedSet(setId, userId);
+
+  const word = await new Word({
+    setId: new Types.ObjectId(setId),
+    ...data,
+  }).save();
+
+  await VocabularySet.findByIdAndUpdate(setId, { $inc: { totalWords: 1 } });
+
+  return mapWordToResponse(word.toObject());
 }
 
 /**
@@ -227,9 +403,19 @@ export async function updateWord(
   userId: string,
   data: Partial<AddWordDTO>,
 ): Promise<WordResponse> {
-  // TODO: Kiểm tra set thuộc về userId
-  // TODO: Word.findOneAndUpdate({ _id: wordId, setId }, data, { new: true })
-  throw new Error("Not implemented");
+  await ensureOwnedSet(setId, userId);
+
+  const word = await Word.findOneAndUpdate(
+    { _id: wordId, setId: new Types.ObjectId(setId) },
+    { $set: data },
+    { new: true },
+  ).lean();
+
+  if (!word) {
+    throw new AppError("Word not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  return mapWordToResponse(word);
 }
 
 /**
@@ -243,11 +429,15 @@ export async function deleteWord(
   setId: string,
   userId: string,
 ): Promise<void> {
-  // TODO: Kiểm tra set thuộc về userId
-  // TODO: Promise.all([
-  //   Word.deleteOne({ _id: wordId, setId }),
-  //   LearningProgress.deleteMany({ wordId }),
-  //   VocabularySet.findByIdAndUpdate(setId, { $inc: { totalWords: -1 } }),
-  // ]);
-  throw new Error("Not implemented");
+  await ensureOwnedSet(setId, userId);
+
+  const result = await Word.deleteOne({ _id: wordId, setId: new Types.ObjectId(setId) });
+  if (result.deletedCount === 0) {
+    throw new AppError("Word not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  await Promise.all([
+    LearningProgress.deleteMany({ wordId: new Types.ObjectId(wordId) }),
+    VocabularySet.findByIdAndUpdate(setId, { $inc: { totalWords: -1 } }),
+  ]);
 }

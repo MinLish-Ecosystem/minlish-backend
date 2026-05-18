@@ -30,6 +30,7 @@ export const verifyToken = (req: Request, _res: Response, next: NextFunction): v
     // Gắn thông tin user vào request để controller dùng
     req.user = {
       _id: payload.userId as any,
+      id: payload.userId,
       email: payload.email,
       role: payload.role as any,
       name: '',

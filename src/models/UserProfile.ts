@@ -13,6 +13,7 @@ export interface IUserProfile extends Document {
     pushNotification: boolean;
     soundEffect: boolean;
   };
+  reviewPerDay: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +59,12 @@ const UserProfileSchema = new Schema<IUserProfile>(
       emailNotification: { type: Boolean, default: true },
       pushNotification: { type: Boolean, default: true },
       soundEffect: { type: Boolean, default: true },
+    },
+    reviewPerDay: {
+      type: Number,
+      default: 20,
+      min: [1, "Review goal must be at least 1"],
+      max: [200, "Review goal cannot exceed 200"],
     },
   },
   { timestamps: true },

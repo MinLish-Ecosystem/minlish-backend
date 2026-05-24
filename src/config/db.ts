@@ -28,7 +28,12 @@ export const connectDB = async (): Promise<void> => {
   const connType = isAtlas ? "MongoDB Atlas (Cloud)" : "MongoDB Local";
 
   try {
-    await mongoose.connect(mongoUri);
+    await mongoose.connect(mongoUri, {
+      maxPoolSize: 50,          // Default là 5 — tránh bottleneck kết nối dưới tải cao
+      minPoolSize: 10,          // Duy trì sẵn 10 kết nối để tránh tình trạng cold start
+      socketTimeoutMS: 45000,
+      serverSelectionTimeoutMS: 5000,
+    });
     console.log(
       `✓ Connection to ${connType} has been established successfully.`,
     );

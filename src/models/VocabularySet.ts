@@ -34,6 +34,8 @@ export interface IVocabularySet extends Document {
   totalWords: number;
   learnerCount: number;        // Số người đã clone bộ từ này về library
   clonedFrom?: Types.ObjectId; // Ref đến set gốc nếu đây là bản copy
+  isDeleted: boolean;
+  deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -96,6 +98,14 @@ const VocabularySetSchema = new Schema<IVocabularySet>(
       type: Schema.Types.ObjectId,
       ref: "VocabularySet",
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+    },
   },
   { timestamps: true },
 );
@@ -107,6 +117,8 @@ VocabularySetSchema.index({ isPublic: 1, learnerCount: -1 }); // Explore: sorted
 VocabularySetSchema.index({ isPublic: 1, createdAt: -1 });    // Explore: sorted by newest
 VocabularySetSchema.index({ isPublic: 1, category: 1, level: 1 }); // Explore: filter by category+level
 VocabularySetSchema.index({ userId: 1, category: 1 });         // My Library filter
+VocabularySetSchema.index({ isDeleted: 1, updatedAt: -1 });  // sync query
+VocabularySetSchema.index({ userId: 1, isDeleted: 1, createdAt: -1 });  // my library
 
 // Full-text search index — hỗ trợ ?q=ielts tìm trong name, description, tags
 VocabularySetSchema.index(

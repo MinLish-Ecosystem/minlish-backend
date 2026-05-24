@@ -50,6 +50,15 @@ export const loginUser = async (input: LoginInput) => {
     throw new AppError('Invalid email or password', HttpStatus.UNAUTHORIZED, ErrorCodes.INVALID_CREDENTIALS);
   }
 
+  // Kiểm tra trạng thái hoạt động (Bị khóa/Ban)
+  if (!user.isActive) {
+    throw new AppError(
+      user.banReason || 'Account has been suspended',
+      HttpStatus.FORBIDDEN,
+      ErrorCodes.FORBIDDEN
+    );
+  }
+
   // Kiểm tra xác thực email
   if (!user.isVerified) {
     throw new AppError('Tài khoản chưa được kích hoạt. Vui lòng kiểm tra email.', HttpStatus.FORBIDDEN, ErrorCodes.EMAIL_NOT_VERIFIED);

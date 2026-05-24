@@ -24,6 +24,8 @@ export interface IWord extends Document {
   note?: string;
   imageUrl?: string;
   audioUrl?: string;
+  isDeleted: boolean;
+  deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -85,6 +87,14 @@ const WordSchema = new Schema<IWord>(
     audioUrl: {
       type: String,
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+    },
   },
   { timestamps: true },
 );
@@ -92,6 +102,8 @@ const WordSchema = new Schema<IWord>(
 // Indexes cho lookup nhanh
 WordSchema.index({ setId: 1 });
 WordSchema.index({ setId: 1, word: 1 }, { unique: true });
+WordSchema.index({ setId: 1, isDeleted: 1 });  // query words trong set
+WordSchema.index({ isDeleted: 1, updatedAt: -1 });  // sync query
 
 // Full-text search trong word list của một set
 WordSchema.index(

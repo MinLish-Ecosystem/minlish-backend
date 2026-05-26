@@ -3,6 +3,7 @@ import authRoutes from './auth.routes';
 import userRoutes from './user.routes';
 import adminRoutes from './admin.routes';
 import vocabRoutes from './vocab.routes';
+import notificationRoutes from './notification.routes';
 
 /**
  * Router gốc — Mount tất cả sub-routers vào đây
@@ -24,6 +25,7 @@ router.use('/auth', authRoutes);
 router.use('/user', userRoutes);
 router.use('/admin', adminRoutes);
 router.use('/vocab', vocabRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;
 

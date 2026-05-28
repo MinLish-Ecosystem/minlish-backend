@@ -260,3 +260,24 @@ export const getAuditLogsController = catchAsync(async (req: Request, res: Respo
   const result = await adminService.getAuditLogs(page, limit);
   return sendSuccess(res, 'Audit logs', result);
 });
+
+/**
+ * @swagger
+ * /api/v1/admin/reports:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Export users report as CSV
+ *     security:
+ *       - BearerAuth: []
+ *     produces:
+ *       - text/csv
+ *     responses:
+ *       200:
+ *         description: CSV file download
+ */
+export const getReportsController = catchAsync(async (_req: Request, res: Response) => {
+  const csv = await adminService.exportUsersReportCSV();
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="users_report.csv"');
+  res.status(200).send(csv);
+});

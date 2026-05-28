@@ -11,6 +11,7 @@ import {
 	listPublicSetsController,
 	unpublishSetController,
 	getAuditLogsController,
+	getReportsController,
 } from '../controllers/admin.controller';
 
 /**
@@ -33,6 +34,7 @@ router.delete('/users/:id', deleteUserController);
 router.get('/stats', getAdminStatsController);
 router.get('/sets', listPublicSetsController);
 router.put('/sets/:id/unpublish', [body('reason').optional().isString()], unpublishSetController);
+router.get('/reports', getReportsController);
 router.get('/audit-logs', getAuditLogsController);
 
 export default router;

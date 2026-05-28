@@ -4,15 +4,18 @@ import userRoutes from './user.routes';
 import adminRoutes from './admin.routes';
 import vocabRoutes from './vocab.routes';
 import notificationRoutes from './notification.routes';
+import statsRoutes from './stats.routes';
 
 /**
  * Router gốc — Mount tất cả sub-routers vào đây
  *
  * Cấu trúc URL:
- *   /api/v1/auth/...  → auth.routes.ts
- *   /api/v1/user/...  → user.routes.ts
- *   /api/v1/admin/... → admin.routes.ts
- *   /api/v1/vocab/... → vocab.routes.ts
+ *   /api/v1/auth/...          → auth.routes.ts
+ *   /api/v1/user/...          → user.routes.ts
+ *   /api/v1/admin/...         → admin.routes.ts
+ *   /api/v1/vocab/...         → vocab.routes.ts
+ *   /api/v1/notifications/... → notification.routes.ts
+ *   /api/v1/stats/...         → stats.routes.ts
  *
  * Khi thêm module mới (ví dụ: lessons, vocabulary...):
  *   1. Tạo file src/routes/lesson.routes.ts
@@ -26,6 +29,7 @@ router.use('/user', userRoutes);
 router.use('/admin', adminRoutes);
 router.use('/vocab', vocabRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/stats', statsRoutes);
 
 export default router;
 

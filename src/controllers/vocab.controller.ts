@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import * as vocabService from "../services/vocab.service";
 import { VocabSetFilters } from "../types/vocab.types";
+import { sendSuccess } from "../utils/response.util";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ function parseFilters(query: Request["query"]): VocabSetFilters {
     tags:     parseTags(query.tags as string),
     page:     query.page  ? Number(query.page)  : 1,
     limit:    query.limit ? Number(query.limit) : 12,
+    includeProgress: query.includeProgress === "true",
   };
 }
 
@@ -40,18 +42,12 @@ export async function getUserSetsController(
     const userId  = req.user!.id;
     const filters = parseFilters(req.query);
     const result  = await vocabService.getUserSets(userId, filters);
-    res.status(200).json({ status: "success", ...result });
+    sendSuccess(res, "Sets fetched", result);
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * GET /api/v1/vocab/sets/public
- * Explore — Public sets với search/filter/pagination
- *
- * TODO (Người 1): Gọi vocabService.getPublicSets và trả về response
- */
 export async function getPublicSetsController(
   req: Request,
   res: Response,
@@ -60,18 +56,12 @@ export async function getPublicSetsController(
   try {
     const filters = parseFilters(req.query);
     const result  = await vocabService.getPublicSets(filters);
-    res.status(200).json({ status: "success", ...result });
+    sendSuccess(res, "Public sets fetched", result);
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * GET /api/v1/vocab/sets/:id
- * Chi tiết một bộ từ (my set hoặc public set)
- *
- * TODO (Người 1): Implement
- */
 export async function getSetDetailController(
   req: Request,
   res: Response,
@@ -81,18 +71,12 @@ export async function getSetDetailController(
     const { id }  = req.params;
     const userId  = req.user?.id;
     const set     = await vocabService.getSetById(id, userId);
-    res.status(200).json({ status: "success", data: set });
+    sendSuccess(res, "Set detail", set);
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * POST /api/v1/vocab/sets
- * Tạo bộ từ mới
- *
- * TODO (Người 1): Implement
- */
 export async function createSetController(
   req: Request,
   res: Response,
@@ -101,18 +85,12 @@ export async function createSetController(
   try {
     const userId = req.user!.id;
     const set    = await vocabService.createSet(userId, req.body);
-    res.status(201).json({ status: "success", data: set });
+    sendSuccess(res, "Set created", set, 201);
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * PUT /api/v1/vocab/sets/:id
- * Cập nhật bộ từ
- *
- * TODO (Người 1): Implement
- */
 export async function updateSetController(
   req: Request,
   res: Response,
@@ -122,18 +100,12 @@ export async function updateSetController(
     const { id } = req.params;
     const userId = req.user!.id;
     const set    = await vocabService.updateSet(id, userId, req.body);
-    res.status(200).json({ status: "success", data: set });
+    sendSuccess(res, "Set updated", set);
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * DELETE /api/v1/vocab/sets/:id
- * Xóa bộ từ (cascade)
- *
- * TODO (Người 1): Implement
- */
 export async function deleteSetController(
   req: Request,
   res: Response,
@@ -143,18 +115,12 @@ export async function deleteSetController(
     const { id } = req.params;
     const userId = req.user!.id;
     await vocabService.deleteSet(id, userId);
-    res.status(204).send();
+    sendSuccess(res, "Set deleted", null);
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * POST /api/v1/vocab/sets/:id/clone
- * Clone public set về My Library
- *
- * TODO (Người 1): Implement
- */
 export async function clonePublicSetController(
   req: Request,
   res: Response,
@@ -164,20 +130,12 @@ export async function clonePublicSetController(
     const { id } = req.params;
     const userId = req.user!.id;
     const set    = await vocabService.clonePublicSet(id, userId);
-    res.status(201).json({ status: "success", data: set, message: "Set added to your library" });
+    sendSuccess(res, "Set added to your library", set, 201);
   } catch (err) {
     next(err);
   }
 }
 
-// ─── Word Controllers ────────────────────────────────────────────────────────
-
-/**
- * GET /api/v1/vocab/sets/:id/words
- * Danh sách từ trong set (có text search ?q=)
- *
- * TODO (Người 1): Implement
- */
 export async function getWordsController(
   req: Request,
   res: Response,
@@ -188,18 +146,12 @@ export async function getWordsController(
     const userId  = req.user?.id;
     const q       = req.query.q as string | undefined;
     const words   = await vocabService.getWords(id, userId, q);
-    res.status(200).json({ status: "success", data: words });
+    sendSuccess(res, "Words fetched", words);
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * POST /api/v1/vocab/sets/:id/words
- * Thêm từ mới vào set
- *
- * TODO (Người 1): Implement
- */
 export async function addWordController(
   req: Request,
   res: Response,
@@ -209,18 +161,12 @@ export async function addWordController(
     const { id } = req.params;
     const userId = req.user!.id;
     const word   = await vocabService.addWord(id, userId, req.body);
-    res.status(201).json({ status: "success", data: word });
+    sendSuccess(res, "Word added", word, 201);
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * PUT /api/v1/vocab/sets/:id/words/:wordId
- * Sửa từ
- *
- * TODO (Người 1): Implement
- */
 export async function updateWordController(
   req: Request,
   res: Response,
@@ -230,18 +176,12 @@ export async function updateWordController(
     const { id, wordId } = req.params;
     const userId         = req.user!.id;
     const word           = await vocabService.updateWord(wordId, id, userId, req.body);
-    res.status(200).json({ status: "success", data: word });
+    sendSuccess(res, "Word updated", word);
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * DELETE /api/v1/vocab/sets/:id/words/:wordId
- * Xóa từ
- *
- * TODO (Người 1): Implement
- */
 export async function deleteWordController(
   req: Request,
   res: Response,
@@ -251,7 +191,7 @@ export async function deleteWordController(
     const { id, wordId } = req.params;
     const userId         = req.user!.id;
     await vocabService.deleteWord(wordId, id, userId);
-    res.status(204).send();
+    sendSuccess(res, "Word deleted", null);
   } catch (err) {
     next(err);
   }

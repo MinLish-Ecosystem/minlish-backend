@@ -129,4 +129,9 @@ export const searchQueryValidator = [
     .optional()
     .isInt({ min: 1, max: 50 }).withMessage("Limit must be between 1 and 50")
     .toInt(),
+
+  query("includeProgress")
+    .optional()
+    .isBoolean().withMessage("includeProgress must be a boolean")
+    .toBoolean(),
 ];

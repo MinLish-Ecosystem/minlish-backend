@@ -26,6 +26,7 @@ export interface VocabSetFilters {
   sortBy?: SortBy;
   page?: number;
   limit?: number;
+  includeProgress?: boolean;  // NEW — v3
 }
 
 export interface CreateSetDTO {
@@ -53,6 +54,15 @@ export interface AddWordDTO {
 
 // ─── Response DTOs (what API returns) ─────────────────────────────
 
+export interface SetProgressInfo {
+  masteredCount: number;
+  masteredPct: number;
+  learningCount: number;
+  newCount: number;
+  dueToday: number;
+  lastStudied?: string;
+}
+
 export interface VocabSetResponse {
   id: string;
   name: string;
@@ -67,6 +77,7 @@ export interface VocabSetResponse {
   clonedFrom?: string;
   createdAt: string;
   updatedAt: string;
+  progress?: SetProgressInfo;  // NEW — only when includeProgress=true
 }
 
 export interface WordResponse {

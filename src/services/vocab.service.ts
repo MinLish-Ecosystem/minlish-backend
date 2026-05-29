@@ -110,7 +110,11 @@ function calcMasteryPct(progress?: { status: string; totalReviews: number; corre
 }
 
 async function ensureOwnedSet(setId: string, userId: string) {
-  const set = await VocabularySet.findOne({ _id: setId, userId: new Types.ObjectId(userId) });
+  const set = await VocabularySet.findOne({
+    _id: setId,
+    userId: new Types.ObjectId(userId),
+    isDeleted: { $ne: true },
+  });
   if (!set) {
     throw new AppError("Set not found or unauthorized", HttpStatus.NOT_FOUND, ErrorCodes.FORBIDDEN);
   }
@@ -130,18 +134,102 @@ export async function getUserSets(
   userId: string,
   filters: VocabSetFilters,
 ): Promise<PaginatedResponse<VocabSetResponse>> {
-  const { page = 1, limit = 12 } = filters;
+  const { page = 1, limit = 12, includeProgress = false } = filters;
   const skip = (page - 1) * limit;
-  const match = buildSetFilter(filters, { userId: new Types.ObjectId(userId) });
-  const sort  = buildSortOrder(filters.sortBy);
+  const match = buildSetFilter(filters, {
+    userId: new Types.ObjectId(userId),
+    isDeleted: { $ne: true },
+  });
+  const sort = buildSortOrder(filters.sortBy);
 
-  const [rawSets, total] = await Promise.all([
-    VocabularySet.find(match).sort(sort).skip(skip).limit(limit).lean(),
-    VocabularySet.countDocuments(match),
+  if (!includeProgress) {
+    const [rawSets, total] = await Promise.all([
+      VocabularySet.find(match).sort(sort).skip(skip).limit(limit).lean(),
+      VocabularySet.countDocuments(match),
+    ]);
+
+    return {
+      data: rawSets.map(mapSetToResponse),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // Tải tiến trình học thông qua $lookup aggregation tối ưu
+  const now = new Date();
+  const [setsWithProgress, [countResult]] = await Promise.all([
+    VocabularySet.aggregate([
+      { $match: match },
+      { $sort: sort },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: "learningprogresses",
+          let: { setId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$setId", "$$setId"] },
+                    { $eq: ["$userId", new Types.ObjectId(userId)] },
+                  ],
+                },
+              },
+            },
+            {
+              $group: {
+                _id: "$status",
+                count: { $sum: 1 },
+                dueToday: { $sum: { $cond: [{ $lte: ["$nextReviewDate", now] }, 1, 0] } },
+                lastStudied: { $max: "$lastReviewDate" },
+              },
+            },
+          ],
+          as: "progressRaw",
+        },
+      },
+    ]),
+    VocabularySet.aggregate([{ $match: match }, { $count: "total" }]),
   ]);
 
+  const total = countResult?.total ?? 0;
+
+  const data = setsWithProgress.map((set) => {
+    const mapped = mapSetToResponse(set);
+    const progressByStatus = new Map(set.progressRaw.map((p: any) => [p._id, p]));
+
+    const masteredCount = (progressByStatus.get("mastered") as any)?.count ?? 0;
+    const learningCount = (progressByStatus.get("learning") as any)?.count ?? 0;
+    const reviewCount = (progressByStatus.get("review") as any)?.count ?? 0;
+    const newCount = set.totalWords - masteredCount - learningCount - reviewCount;
+    const dueToday = set.progressRaw.reduce((sum: number, p: any) => sum + p.dueToday, 0);
+
+    const lastStudiedDate = set.progressRaw.reduce(
+      (latest: Date | null, p: any) =>
+        p.lastStudied && (!latest || p.lastStudied > latest) ? p.lastStudied : latest,
+      null,
+    );
+
+    mapped.progress = {
+      masteredCount,
+      masteredPct: set.totalWords > 0 ? Math.round((masteredCount / set.totalWords) * 100) : 0,
+      learningCount,
+      newCount: Math.max(0, newCount),
+      dueToday,
+      lastStudied: lastStudiedDate ? lastStudiedDate.toISOString() : undefined,
+    };
+
+    return mapped;
+  });
+
   return {
-    data: rawSets.map(mapSetToResponse),
+    data,
     pagination: {
       page,
       limit,
@@ -162,7 +250,7 @@ export async function getPublicSets(
 ): Promise<PaginatedResponse<VocabSetResponse>> {
   const { page = 1, limit = 12 } = filters;
   const skip = (page - 1) * limit;
-  const match = buildSetFilter(filters, { isPublic: true });
+  const match = buildSetFilter(filters, { isPublic: true, isDeleted: { $ne: true } });
   const sort  = buildSortOrder(filters.sortBy);
 
   const [rawSets, total] = await Promise.all([
@@ -191,7 +279,7 @@ export async function getSetById(
   setId: string,
   userId?: string,
 ): Promise<VocabSetResponse> {
-  const set = await VocabularySet.findById(setId).lean();
+  const set = await VocabularySet.findOne({ _id: setId, isDeleted: { $ne: true } }).lean();
 
   if (!set) {
     throw new AppError("Set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
@@ -234,7 +322,7 @@ export async function updateSet(
   data: Partial<CreateSetDTO>,
 ): Promise<VocabSetResponse> {
   const set = await VocabularySet.findOneAndUpdate(
-    { _id: setId, userId: new Types.ObjectId(userId) },
+    { _id: setId, userId: new Types.ObjectId(userId), isDeleted: { $ne: true } },
     { $set: data },
     { new: true },
   ).lean();
@@ -253,15 +341,20 @@ export async function updateSet(
  * TODO (Người 1): Implement body của function này
  */
 export async function deleteSet(setId: string, userId: string): Promise<void> {
-  const set = await VocabularySet.findOne({ _id: setId, userId: new Types.ObjectId(userId) }).lean();
+  const set = await VocabularySet.findOne({
+    _id: setId,
+    userId: new Types.ObjectId(userId),
+    isDeleted: { $ne: true },
+  }).lean();
 
   if (!set) {
     throw new AppError("Not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
   }
 
+  const now = new Date();
   await Promise.all([
-    VocabularySet.deleteOne({ _id: setId, userId: new Types.ObjectId(userId) }),
-    Word.deleteMany({ setId: new Types.ObjectId(setId) }),
+    VocabularySet.updateOne({ _id: setId }, { $set: { isDeleted: true, deletedAt: now } }),
+    Word.updateMany({ setId: new Types.ObjectId(setId) }, { $set: { isDeleted: true, deletedAt: now } }),
     LearningProgress.deleteMany({ setId: new Types.ObjectId(setId) }),
   ]);
 }
@@ -276,7 +369,10 @@ export async function clonePublicSet(
   sourceSetId: string,
   userId: string,
 ): Promise<VocabSetResponse> {
-  const sourceSet = await VocabularySet.findById(sourceSetId).lean();
+  const sourceSet = await VocabularySet.findOne({
+    _id: sourceSetId,
+    isDeleted: { $ne: true },
+  }).lean();
 
   if (!sourceSet || !sourceSet.isPublic) {
     throw new AppError("Public set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
@@ -296,11 +392,12 @@ export async function clonePublicSet(
     learnerCount: 0,
   }).save();
 
-  const sourceWords = await Word.find({ setId: sourceSet._id }).lean();
+  const sourceWords = await Word.find({ setId: sourceSet._id, isDeleted: { $ne: true } }).lean();
   if (sourceWords.length > 0) {
     const clonedWords = sourceWords.map(({ _id, __v, createdAt, updatedAt, setId, ...word }) => ({
       ...word,
       setId: newSet._id,
+      isDeleted: false,
     }));
 
     await Word.insertMany(clonedWords);
@@ -327,7 +424,7 @@ export async function getWords(
   userId?: string,
   q?: string,
 ): Promise<WordResponse[]> {
-  const set = await VocabularySet.findById(setId).lean();
+  const set = await VocabularySet.findOne({ _id: setId, isDeleted: { $ne: true } }).lean();
 
   if (!set) {
     throw new AppError("Not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
@@ -338,7 +435,10 @@ export async function getWords(
     throw new AppError("Forbidden", HttpStatus.FORBIDDEN, ErrorCodes.FORBIDDEN);
   }
 
-  const query: Record<string, unknown> = { setId: new Types.ObjectId(setId) };
+  const query: Record<string, unknown> = {
+    setId: new Types.ObjectId(setId),
+    isDeleted: { $ne: true },
+  };
   if (q) {
     query.$text = { $search: q };
   }
@@ -406,7 +506,7 @@ export async function updateWord(
   await ensureOwnedSet(setId, userId);
 
   const word = await Word.findOneAndUpdate(
-    { _id: wordId, setId: new Types.ObjectId(setId) },
+    { _id: wordId, setId: new Types.ObjectId(setId), isDeleted: { $ne: true } },
     { $set: data },
     { new: true },
   ).lean();
@@ -431,8 +531,11 @@ export async function deleteWord(
 ): Promise<void> {
   await ensureOwnedSet(setId, userId);
 
-  const result = await Word.deleteOne({ _id: wordId, setId: new Types.ObjectId(setId) });
-  if (result.deletedCount === 0) {
+  const result = await Word.updateOne(
+    { _id: wordId, setId: new Types.ObjectId(setId), isDeleted: { $ne: true } },
+    { $set: { isDeleted: true, deletedAt: new Date() } }
+  );
+  if (result.modifiedCount === 0) {
     throw new AppError("Word not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
   }
 

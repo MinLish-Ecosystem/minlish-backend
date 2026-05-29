@@ -3,6 +3,7 @@ import authRoutes from './auth.routes';
 import userRoutes from './user.routes';
 import adminRoutes from './admin.routes';
 import vocabRoutes from './vocab.routes';
+import notificationRoutes from './notification.routes';
 import learningRoutes from './learning.routes';
 import syncRoutes from './sync.routes';
 
@@ -28,6 +29,7 @@ router.use('/admin', adminRoutes);
 router.use('/vocab', vocabRoutes);
 router.use('/learning', learningRoutes);
 router.use('/sync', syncRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;
 

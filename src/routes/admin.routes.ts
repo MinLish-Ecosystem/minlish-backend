@@ -1,5 +1,18 @@
 import { Router } from 'express';
 import { verifyToken, requireAdmin } from '../middlewares/auth.middleware';
+import { body } from 'express-validator';
+import {
+	listUsersController,
+	getUserDetailController,
+	banUserController,
+	unbanUserController,
+	deleteUserController,
+	getAdminStatsController,
+	listPublicSetsController,
+	unpublishSetController,
+	getAuditLogsController,
+	getReportsController,
+} from '../controllers/admin.controller';
 
 /**
  * @swagger
@@ -10,11 +23,18 @@ import { verifyToken, requireAdmin } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// Tất cả admin routes đều cần: verifyToken + requireAdmin
-// TODO: Thêm các admin routes khi phát triển tính năng quản trị
+router.use(verifyToken, requireAdmin);
 
-// Ví dụ:
-// router.get('/users', verifyToken, requireAdmin, getAllUsers);
-// router.delete('/users/:id', verifyToken, requireAdmin, deleteUser);
+router.get('/users', listUsersController);
+router.get('/users/:id', getUserDetailController);
+router.put('/users/:id/ban', [body('reason').notEmpty().withMessage('reason required')], banUserController);
+router.put('/users/:id/unban', unbanUserController);
+router.delete('/users/:id', deleteUserController);
+
+router.get('/stats', getAdminStatsController);
+router.get('/sets', listPublicSetsController);
+router.put('/sets/:id/unpublish', [body('reason').optional().isString()], unpublishSetController);
+router.get('/reports', getReportsController);
+router.get('/audit-logs', getAuditLogsController);
 
 export default router;

@@ -1,7 +1,22 @@
 import { Router } from 'express';
-import { getProfile, updateProfile, requestEmailChangeController, confirmEmailChangeController } from '../controllers/user.controller';
+import {
+  getProfile,
+  updateProfile,
+  requestEmailChangeController,
+  confirmEmailChangeController,
+  getLearningProfileController,
+  updateLearningProfileController,
+  registerFCMTokenController,
+  deleteFCMTokenController,
+} from '../controllers/user.controller';
 import { verifyToken } from '../middlewares/auth.middleware';
-import { updateProfileValidator, requestEmailChangeValidator, confirmEmailChangeValidator } from '../validators/user.validator';
+import {
+  updateProfileValidator,
+  requestEmailChangeValidator,
+  confirmEmailChangeValidator,
+  learningProfileValidator,
+  fcmTokenValidator,
+} from '../validators/user.validator';
 import { validate } from '../middlewares/validate.middleware';
 
 /**
@@ -27,5 +42,21 @@ router.post('/request-email-change', verifyToken, requestEmailChangeValidator, v
 
 // POST /api/v1/user/confirm-email-change
 router.post('/confirm-email-change', verifyToken, confirmEmailChangeValidator, validate, confirmEmailChangeController);
+
+// ─── Phase 2-B: Learning Profile ────────────────────────────────────────────
+
+// GET /api/v1/user/learning-profile
+router.get('/learning-profile', verifyToken, getLearningProfileController);
+
+// PUT /api/v1/user/learning-profile
+router.put('/learning-profile', verifyToken, learningProfileValidator, validate, updateLearningProfileController);
+
+// ─── Phase 5-B: FCM Token ───────────────────────────────────────────────────
+
+// POST /api/v1/user/fcm-token
+router.post('/fcm-token', verifyToken, fcmTokenValidator, validate, registerFCMTokenController);
+
+// DELETE /api/v1/user/fcm-token
+router.delete('/fcm-token', verifyToken, deleteFCMTokenController);
 
 export default router;

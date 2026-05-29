@@ -2,6 +2,8 @@
 // User Service — Nhàn phụ trách
 // ─────────────────────────────────────────────────────────────────────────────
 import { User } from '../models/User';
+import { UserProfile } from '../models/UserProfile';
+import { FCMToken } from '../models/FCMToken';
 import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
@@ -141,4 +143,121 @@ export const confirmEmailChange = async (userId: string, newEmail: string, otp: 
   await OTP.deleteMany({ email, type: 'change_email' });
 
   return { message: 'Email đã được cập nhật thành công.' };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2-B: User Learning Profile
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Lấy learning profile của user (goalsinh học tập, cài đặt)
+ */
+export const getLearningProfile = async (userId: string) => {
+  const profile = await UserProfile.findOne({ userId });
+  if (!profile) {
+    throw new AppError(
+      'Learning profile not found',
+      HttpStatus.NOT_FOUND,
+      ErrorCodes.USER_NOT_FOUND,
+    );
+  }
+  return {
+    learningGoal: profile.learningGoal,
+    targetLevel: profile.targetLevel,
+    currentLevel: profile.currentLevel,
+    dailyGoal: profile.dailyGoal,
+    reviewPerDay: profile.reviewPerDay ?? 20,
+    reminderTime: profile.reminderTime,
+    timezone: profile.timezone,
+    preferences: {
+      pushNotification: profile.preferences.pushNotification,
+      soundEffect: profile.preferences.soundEffect,
+    },
+  };
+};
+
+/**
+ * Cập nhật learning profile (upsert nếu chưa tồn tại)
+ */
+export const updateLearningProfile = async (
+  userId: string,
+  data: Partial<{
+    learningGoal: string;
+    targetLevel: string;
+    dailyGoal: number;
+    reviewPerDay: number;
+    reminderTime: string;
+    timezone: string;
+    preferences: { pushNotification?: boolean; soundEffect?: boolean };
+  }>,
+) => {
+  // Flatten preferences để $set hoạt động đúng trên sub-doc
+  const updateData: Record<string, any> = {};
+  if (data.learningGoal !== undefined) updateData.learningGoal = data.learningGoal;
+  if (data.targetLevel !== undefined) updateData.targetLevel = data.targetLevel;
+  if (data.dailyGoal !== undefined) updateData.dailyGoal = data.dailyGoal;
+  if (data.reviewPerDay !== undefined) updateData.reviewPerDay = data.reviewPerDay;
+  if (data.reminderTime !== undefined) updateData.reminderTime = data.reminderTime;
+  if (data.timezone !== undefined) updateData.timezone = data.timezone;
+  if (data.preferences?.pushNotification !== undefined) {
+    updateData['preferences.pushNotification'] = data.preferences.pushNotification;
+  }
+  if (data.preferences?.soundEffect !== undefined) {
+    updateData['preferences.soundEffect'] = data.preferences.soundEffect;
+  }
+
+  const profile = await UserProfile.findOneAndUpdate(
+    { userId },
+    { $set: updateData },
+    { new: true, upsert: true, runValidators: true },
+  );
+
+  return {
+    learningGoal: profile!.learningGoal,
+    targetLevel: profile!.targetLevel,
+    currentLevel: profile!.currentLevel,
+    dailyGoal: profile!.dailyGoal,
+    reviewPerDay: profile!.reviewPerDay ?? 20,
+    reminderTime: profile!.reminderTime,
+    timezone: profile!.timezone,
+    preferences: {
+      pushNotification: profile!.preferences.pushNotification,
+      soundEffect: profile!.preferences.soundEffect,
+    },
+  };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 5-B: FCM Token Management
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Đăng ký hoặc cập nhật FCM token cho thiết bị
+ */
+export const registerFCMToken = async (
+  userId: string,
+  data: {
+    token: string;
+    deviceId: string;
+    platform: 'android' | 'ios' | 'web';
+  },
+) => {
+  await FCMToken.findOneAndUpdate(
+    { userId, deviceId: data.deviceId },
+    {
+      $set: {
+        token: data.token,
+        platform: data.platform,
+        lastUsedAt: new Date(),
+      },
+    },
+    { upsert: true, new: true },
+  );
+};
+
+/**
+ * Xoá FCM token khi user logout hoặc huỷ thông báo
+ */
+export const deleteFCMToken = async (userId: string, deviceId: string) => {
+  await FCMToken.deleteOne({ userId, deviceId });
 };

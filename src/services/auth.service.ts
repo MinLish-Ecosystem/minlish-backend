@@ -1,17 +1,20 @@
-import { User } from '../models/User';
-import { OTP } from '../models/OTP';
-import { generateOTP, getOTPExpiresAt } from '../utils/otp.util';
-import { sendOTPRegistrationEmail, sendPasswordResetEmail } from './mail.service';
+import { User } from "../models/User";
+import { OTP } from "../models/OTP";
+import { generateOTP, getOTPExpiresAt } from "../utils/otp.util";
+import {
+  sendOTPRegistrationEmail,
+  sendPasswordResetEmail,
+} from "./mail.service";
 import {
   signAccessToken,
   signRefreshToken,
   verifyRefreshToken,
   TokenPayload,
-} from '../utils/jwt.util';
-import { addToBlacklist } from '../utils/tokenBlacklist';
-import { AppError } from '../utils/AppError';
-import { HttpStatus } from '../constants/httpStatus';
-import { ErrorCodes } from '../constants/errorCodes';
+} from "../utils/jwt.util";
+import { addToBlacklist } from "../utils/tokenBlacklist";
+import { AppError } from "../utils/AppError";
+import { HttpStatus } from "../constants/httpStatus";
+import { ErrorCodes } from "../constants/errorCodes";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN SERVICE — Bảo phụ trách
@@ -39,29 +42,41 @@ export const loginUser = async (input: LoginInput) => {
   const { email, password } = input;
 
   // 1. Tìm user — phải dùng .select('+password') vì schema có select: false
-  const user = await User.findOne({ email }).select('+password +refreshToken');
+  const user = await User.findOne({ email }).select("+password +refreshToken");
   if (!user) {
-    throw new AppError('Invalid email or password', HttpStatus.UNAUTHORIZED, ErrorCodes.INVALID_CREDENTIALS);
+    throw new AppError(
+      "Invalid email or password",
+      HttpStatus.UNAUTHORIZED,
+      ErrorCodes.INVALID_CREDENTIALS,
+    );
   }
 
   // 2. So sánh password
   const isMatch = await user.comparePassword(password);
   if (!isMatch) {
-    throw new AppError('Invalid email or password', HttpStatus.UNAUTHORIZED, ErrorCodes.INVALID_CREDENTIALS);
+    throw new AppError(
+      "Invalid email or password",
+      HttpStatus.UNAUTHORIZED,
+      ErrorCodes.INVALID_CREDENTIALS,
+    );
   }
 
   // Kiểm tra trạng thái hoạt động (Bị khóa/Ban)
   if (!user.isActive) {
     throw new AppError(
-      user.banReason || 'Account has been suspended',
+      user.banReason || "Account has been suspended",
       HttpStatus.FORBIDDEN,
-      ErrorCodes.FORBIDDEN
+      ErrorCodes.FORBIDDEN,
     );
   }
 
   // Kiểm tra xác thực email
   if (!user.isVerified) {
-    throw new AppError('Tài khoản chưa được kích hoạt. Vui lòng kiểm tra email.', HttpStatus.FORBIDDEN, ErrorCodes.EMAIL_NOT_VERIFIED);
+    throw new AppError(
+      "Tài khoản chưa được kích hoạt. Vui lòng kiểm tra email.",
+      HttpStatus.FORBIDDEN,
+      ErrorCodes.EMAIL_NOT_VERIFIED,
+    );
   }
 
   // 3. Tạo payload cho token
@@ -80,7 +95,8 @@ export const loginUser = async (input: LoginInput) => {
   await user.save();
 
   // Tính toán redirectUrl dựa vào role
-  const redirectUrl = user.role === 'admin' ? '/admin/profile' : '/user/profile';
+  const redirectUrl =
+    user.role === "admin" ? "/admin/profile" : "/user/profile";
 
   // 6. Trả về data (không trả password)
   return {
@@ -107,24 +123,36 @@ export const refreshTokenService = async (refreshToken: string) => {
   try {
     payload = verifyRefreshToken(refreshToken);
   } catch {
-    throw new AppError('Invalid or expired refresh token', HttpStatus.UNAUTHORIZED, ErrorCodes.TOKEN_INVALID);
+    throw new AppError(
+      "Invalid or expired refresh token",
+      HttpStatus.UNAUTHORIZED,
+      ErrorCodes.TOKEN_INVALID,
+    );
   }
 
   // Kiểm tra refresh token có trong DB không (để phát hiện nếu đã bị logout)
-  const user = await User.findById(payload.userId).select('+refreshToken');
+  const user = await User.findById(payload.userId).select("+refreshToken");
   if (!user || user.refreshToken !== refreshToken) {
-    throw new AppError('Refresh token has been revoked', HttpStatus.UNAUTHORIZED, ErrorCodes.TOKEN_REVOKED);
+    throw new AppError(
+      "Refresh token has been revoked",
+      HttpStatus.UNAUTHORIZED,
+      ErrorCodes.TOKEN_REVOKED,
+    );
   }
 
-  // Tạo Access Token mới
+  // Rotate refresh token: tạo cặp token mới và thay refresh token trong DB
   const newPayload: TokenPayload = {
     userId: (user._id as any).toString(),
     email: user.email,
     role: user.role,
   };
   const newAccessToken = signAccessToken(newPayload);
+  const newRefreshToken = signRefreshToken(newPayload);
 
-  return { accessToken: newAccessToken };
+  user.refreshToken = newRefreshToken;
+  await user.save();
+
+  return { accessToken: newAccessToken, refreshToken: newRefreshToken };
 };
 
 /**
@@ -156,15 +184,19 @@ export const registerUser = async (input: RegisterInput): Promise<any> => {
   if (user) {
     if (user.isVerified) {
       // Nếu đã xác thực -> Báo lỗi trùng email
-      throw new AppError('Email đã được sử dụng', HttpStatus.CONFLICT, ErrorCodes.EMAIL_ALREADY_EXISTS);
+      throw new AppError(
+        "Email đã được sử dụng",
+        HttpStatus.CONFLICT,
+        ErrorCodes.EMAIL_ALREADY_EXISTS,
+      );
     } else {
       // Nếu chưa xác thực -> Cập nhật thông tin (nếu có đổi) và gửi lại OTP mới
       user.name = name;
       user.password = password; // pre-save hook sẽ tự động hash lại password
       await user.save();
-      
+
       // Xoá OTP cũ (nếu chưa bị MongoDB xoá)
-      await OTP.deleteMany({ email, type: 'verify_email' });
+      await OTP.deleteMany({ email, type: "verify_email" });
     }
   } else {
     // 2. Tạo user mới với isVerified = false
@@ -182,7 +214,7 @@ export const registerUser = async (input: RegisterInput): Promise<any> => {
   const otpDoc = new OTP({
     email,
     otp: otpCode,
-    type: 'verify_email',
+    type: "verify_email",
     expiresAt: getOTPExpiresAt(10), // Hết hạn sau 10 phút
   });
   await otpDoc.save();
@@ -191,7 +223,8 @@ export const registerUser = async (input: RegisterInput): Promise<any> => {
   await sendOTPRegistrationEmail(email, name, otpCode);
 
   return {
-    message: 'Mã OTP đã được gửi. Vui lòng kiểm tra email để kích hoạt tài khoản.',
+    message:
+      "Mã OTP đã được gửi. Vui lòng kiểm tra email để kích hoạt tài khoản.",
   };
 };
 
@@ -199,16 +232,24 @@ export const registerUser = async (input: RegisterInput): Promise<any> => {
  * Xác thực email bằng OTP
  */
 export const verifyEmailOTP = async (email: string, otp: string) => {
-  const validOTP = await OTP.findOne({ email, otp, type: 'verify_email' });
+  const validOTP = await OTP.findOne({ email, otp, type: "verify_email" });
 
   if (!validOTP) {
-    throw new AppError('Mã OTP không hợp lệ hoặc đã hết hạn', HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+    throw new AppError(
+      "Mã OTP không hợp lệ hoặc đã hết hạn",
+      HttpStatus.BAD_REQUEST,
+      ErrorCodes.VALIDATION_FAILED,
+    );
   }
 
   // Cập nhật trạng thái user
   const user = await User.findOne({ email });
   if (!user) {
-    throw new AppError('Không tìm thấy người dùng', HttpStatus.NOT_FOUND, ErrorCodes.USER_NOT_FOUND);
+    throw new AppError(
+      "Không tìm thấy người dùng",
+      HttpStatus.NOT_FOUND,
+      ErrorCodes.USER_NOT_FOUND,
+    );
   }
 
   user.isVerified = true;
@@ -217,7 +258,7 @@ export const verifyEmailOTP = async (email: string, otp: string) => {
   // Xóa OTP đã sử dụng
   await OTP.deleteOne({ _id: validOTP._id });
 
-  return { message: 'Xác thực tài khoản thành công.' };
+  return { message: "Xác thực tài khoản thành công." };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -234,62 +275,92 @@ export interface ResetPasswordInput {
   newPassword: string;
 }
 
-export const requestPasswordReset = async (input: ForgotPasswordInput): Promise<{ message: string }> => {
+export const requestPasswordReset = async (
+  input: ForgotPasswordInput,
+): Promise<{ message: string }> => {
   const email = input.email.trim().toLowerCase();
   const user = await User.findOne({ email });
 
   if (!user) {
-    throw new AppError('Không tìm thấy tài khoản với email này', HttpStatus.NOT_FOUND, ErrorCodes.USER_NOT_FOUND);
+    throw new AppError(
+      "Không tìm thấy tài khoản với email này",
+      HttpStatus.NOT_FOUND,
+      ErrorCodes.USER_NOT_FOUND,
+    );
   }
 
-  await OTP.deleteMany({ email, type: 'reset_password' });
+  await OTP.deleteMany({ email, type: "reset_password" });
 
   const otpCode = generateOTP();
   await OTP.create({
     email,
     otp: otpCode,
-    type: 'reset_password',
+    type: "reset_password",
     expiresAt: getOTPExpiresAt(10),
   });
 
   await sendPasswordResetEmail(user.email, user.name, otpCode);
 
   return {
-    message: 'Mã OTP đặt lại mật khẩu đã được gửi tới email của bạn.',
+    message: "Mã OTP đặt lại mật khẩu đã được gửi tới email của bạn.",
   };
 };
 
-export const resetPasswordWithOTP = async (input: ResetPasswordInput): Promise<{ message: string }> => {
+export const resetPasswordWithOTP = async (
+  input: ResetPasswordInput,
+): Promise<{ message: string }> => {
   const email = input.email.trim().toLowerCase();
   const now = new Date();
 
-  const latestOTP = await OTP.findOne({ email, type: 'reset_password' }).sort({ createdAt: -1 });
-  const validOTP = await OTP.findOne({ email, otp: input.otp, type: 'reset_password' });
+  const latestOTP = await OTP.findOne({ email, type: "reset_password" }).sort({
+    createdAt: -1,
+  });
+  const validOTP = await OTP.findOne({
+    email,
+    otp: input.otp,
+    type: "reset_password",
+  });
 
   if (!latestOTP) {
-    throw new AppError('Mã OTP không hợp lệ', HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+    throw new AppError(
+      "Mã OTP không hợp lệ",
+      HttpStatus.BAD_REQUEST,
+      ErrorCodes.VALIDATION_FAILED,
+    );
   }
 
   if (latestOTP.expiresAt.getTime() < now.getTime()) {
-    throw new AppError('Mã OTP đã hết hạn', HttpStatus.GONE, ErrorCodes.VALIDATION_FAILED);
+    throw new AppError(
+      "Mã OTP đã hết hạn",
+      HttpStatus.GONE,
+      ErrorCodes.VALIDATION_FAILED,
+    );
   }
 
   if (!validOTP) {
-    throw new AppError('Mã OTP không chính xác', HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+    throw new AppError(
+      "Mã OTP không chính xác",
+      HttpStatus.BAD_REQUEST,
+      ErrorCodes.VALIDATION_FAILED,
+    );
   }
 
-  const user = await User.findOne({ email }).select('+password +refreshToken');
+  const user = await User.findOne({ email }).select("+password +refreshToken");
   if (!user) {
-    throw new AppError('Không tìm thấy người dùng', HttpStatus.NOT_FOUND, ErrorCodes.USER_NOT_FOUND);
+    throw new AppError(
+      "Không tìm thấy người dùng",
+      HttpStatus.NOT_FOUND,
+      ErrorCodes.USER_NOT_FOUND,
+    );
   }
 
   user.password = input.newPassword;
   user.refreshToken = null;
   await user.save();
 
-  await OTP.deleteMany({ email, type: 'reset_password' });
+  await OTP.deleteMany({ email, type: "reset_password" });
 
   return {
-    message: 'Đặt lại mật khẩu thành công.',
+    message: "Đặt lại mật khẩu thành công.",
   };
 };

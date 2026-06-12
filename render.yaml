@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: minlish-api
+    env: node
+    plan: free
+    region: singapore  # Gần Việt Nam nhất trong các region Render có
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Các biến sau điền thủ công trên Render Dashboard → Environment
+      - key: MONGO_URI_ATLAS
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: MAIL_USER
+        sync: false
+      - key: MAIL_PASS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false  # Điền URL Vercel sau khi deploy frontend, VD: https://minlish.vercel.app
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false

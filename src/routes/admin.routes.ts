@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { verifyToken, requireAdmin } from '../middlewares/auth.middleware';
-import { body } from 'express-validator';
+import { validateZod } from '../middlewares/validate.middleware';
+import {
+  banUserSchema,
+  unpublishSetSchema,
+  adminPaginationSchema,
+  adminIdParamSchema,
+} from '../validators/admin.schema';
 import {
 	listUsersController,
 	getUserDetailController,
@@ -10,8 +16,8 @@ import {
 	getAdminStatsController,
 	listPublicSetsController,
 	unpublishSetController,
-	getAuditLogsController,
 	getReportsController,
+	getAuditLogsController,
 } from '../controllers/admin.controller';
 
 /**
@@ -25,15 +31,15 @@ const router = Router();
 
 router.use(verifyToken, requireAdmin);
 
-router.get('/users', listUsersController);
-router.get('/users/:id', getUserDetailController);
-router.put('/users/:id/ban', [body('reason').notEmpty().withMessage('reason required')], banUserController);
-router.put('/users/:id/unban', unbanUserController);
-router.delete('/users/:id', deleteUserController);
+router.get('/users', validateZod(adminPaginationSchema), listUsersController);
+router.get('/users/:id', validateZod(adminIdParamSchema), getUserDetailController);
+router.put('/users/:id/ban', validateZod(banUserSchema), banUserController);
+router.put('/users/:id/unban', validateZod(adminIdParamSchema), unbanUserController);
+router.delete('/users/:id', validateZod(adminIdParamSchema), deleteUserController);
 
 router.get('/stats', getAdminStatsController);
-router.get('/sets', listPublicSetsController);
-router.put('/sets/:id/unpublish', [body('reason').optional().isString()], unpublishSetController);
+router.get('/sets', validateZod(adminPaginationSchema), listPublicSetsController);
+router.put('/sets/:id/unpublish', validateZod(unpublishSetSchema), unpublishSetController);
 router.get('/reports', getReportsController);
 router.get('/audit-logs', getAuditLogsController);
 

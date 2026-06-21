@@ -5,6 +5,7 @@ interface ApiResponse<T = any> {
   message: string;
   errorCode?: string; // Bổ sung errorCode cho Mobile dễ parse
   data?: T;
+  meta?: Record<string, any>;
   errors?: any;
 }
 
@@ -15,10 +16,12 @@ export const sendSuccess = <T>(
   res: Response,
   message: string,
   data?: T,
-  statusCode: number = 200
+  statusCode: number = 200,
+  meta?: Record<string, any>
 ): Response => {
   const body: ApiResponse<T> = { success: true, message };
-  if (data !== undefined) body.data = data;
+  if (data !== undefined && data !== null) body.data = data;
+  if (meta !== undefined && meta !== null) body.meta = meta;
   return res.status(statusCode).json(body);
 };
 

@@ -1,7 +1,4 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// User Controller — Nhàn phụ trách
-// ─────────────────────────────────────────────────────────────────────────────
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { sendSuccess } from '../utils/response.util';
 import { getUserById, updateUserProfile, requestEmailChange, confirmEmailChange } from '../services/user.service';
 import { AppError } from '../utils/AppError';
@@ -23,25 +20,16 @@ import { catchAsync } from '../utils/catchAsync';
  *       401:
  *         description: Chưa đăng nhập
  */
-export const getProfile = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const getProfile = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?._id?.toString();
 
-  try {
-    const userId = (req.user?._id as string | undefined)?.toString();
-
-    if (!userId) {
-      throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
-    }
-
-    const profile = await getUserById(userId);
-    sendSuccess(res, 'Lấy thông tin profile thành công', profile);
-  } catch (error) {
-    next(error);
+  if (!userId) {
+    throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
   }
-};
+
+  const profile = await getUserById(userId);
+  return sendSuccess(res, 'Profile fetched successfully', profile);
+});
 
 /**
  * @swagger
@@ -72,14 +60,14 @@ export const getProfile = async (
  *         description: Chưa đăng nhập
  */
 export const updateProfile = catchAsync(async (req: Request, res: Response) => {
-  const userId = (req.user?._id as string | undefined)?.toString();
+  const userId = req.user?._id?.toString();
 
   if (!userId) {
     throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
   }
 
   const profile = await updateUserProfile(userId, req.body);
-  sendSuccess(res, 'Cập nhật profile thành công', profile);
+  return sendSuccess(res, 'Profile updated successfully', profile);
 });
 
 /**
@@ -108,12 +96,12 @@ export const updateProfile = catchAsync(async (req: Request, res: Response) => {
  *         description: Email đã có người sử dụng
  */
 export const requestEmailChangeController = catchAsync(async (req: Request, res: Response) => {
-  const userId = (req.user?._id as string | undefined)?.toString();
+  const userId = req.user?._id?.toString();
   if (!userId) throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
 
   const { newEmail } = req.body as { newEmail: string };
   const result = await requestEmailChange(userId, newEmail);
-  sendSuccess(res, result.message, null);
+  return sendSuccess(res, result.message);
 });
 
 /**
@@ -145,10 +133,10 @@ export const requestEmailChangeController = catchAsync(async (req: Request, res:
  *         description: OTP không hợp lệ hoặc email đã tồn tại
  */
 export const confirmEmailChangeController = catchAsync(async (req: Request, res: Response) => {
-  const userId = (req.user?._id as string | undefined)?.toString();
+  const userId = req.user?._id?.toString();
   if (!userId) throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
 
   const { newEmail, otp } = req.body as { newEmail: string; otp: string };
   const result = await confirmEmailChange(userId, newEmail, otp);
-  sendSuccess(res, result.message, null);
+  return sendSuccess(res, result.message);
 });

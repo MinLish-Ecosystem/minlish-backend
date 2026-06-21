@@ -279,6 +279,10 @@ export async function getSetById(
   setId: string,
   userId?: string,
 ): Promise<VocabSetResponse> {
+  if (!Types.ObjectId.isValid(setId)) {
+    throw new AppError("Set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
   const set = await VocabularySet.findOne({ _id: setId, isDeleted: { $ne: true } }).lean();
 
   if (!set) {
@@ -424,10 +428,14 @@ export async function getWords(
   userId?: string,
   q?: string,
 ): Promise<WordResponse[]> {
+  if (!Types.ObjectId.isValid(setId)) {
+    throw new AppError("Set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
   const set = await VocabularySet.findOne({ _id: setId, isDeleted: { $ne: true } }).lean();
 
   if (!set) {
-    throw new AppError("Not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+    throw new AppError("Set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
   }
 
   const isOwner = Boolean(userId) && set.userId.toString() === userId;

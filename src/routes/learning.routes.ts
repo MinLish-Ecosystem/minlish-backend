@@ -1,7 +1,13 @@
 import { Router } from "express";
 import { verifyToken } from "../middlewares/auth.middleware";
-import { validate } from "../middlewares/validate.middleware";
-import { body, param, query } from "express-validator";
+import { validateZod } from "../middlewares/validate.middleware";
+import {
+  getQueueSchema,
+  submitReviewSchema,
+  setParamSchema,
+  wordParamSchema,
+  batchSyncSchema,
+} from "../validators/learning.schema";
 import {
   getDueSummaryController,
   getLearningQueueController,
@@ -95,11 +101,7 @@ router.get("/due-summary", getDueSummaryController);
  */
 router.get(
   "/queue",
-  [
-    query("previewOnly").optional().isBoolean().toBoolean(),
-    query("timezone").optional().isString()
-  ],
-  validate,
+  validateZod(getQueueSchema),
   getLearningQueueController
 );
 
@@ -148,14 +150,7 @@ router.get(
  */
 router.post(
   "/words/:wordId/review",
-  [
-    param("wordId").isMongoId().withMessage("Invalid wordId"),
-    body("setId").isMongoId().withMessage("Invalid setId"),
-    body("rating").isIn(["again", "hard", "good", "easy"]).withMessage("Invalid rating value"),
-    body("timeSpent").optional().isInt({ min: 0 }).toInt(),
-    body("reviewedAt").optional().isISO8601().withMessage("reviewedAt must be ISO8601 date format")
-  ],
-  validate,
+  validateZod(submitReviewSchema),
   submitReviewController
 );
 
@@ -179,8 +174,7 @@ router.post(
  */
 router.get(
   "/sets/:id/queue",
-  [param("id").isMongoId().withMessage("Invalid setId")],
-  validate,
+  validateZod(setParamSchema),
   getSetLearningQueueController
 );
 
@@ -204,8 +198,7 @@ router.get(
  */
 router.get(
   "/sets/:id/progress",
-  [param("id").isMongoId().withMessage("Invalid setId")],
-  validate,
+  validateZod(setParamSchema),
   getSetProgressSummaryController
 );
 
@@ -229,8 +222,7 @@ router.get(
  */
 router.get(
   "/words/:wordId/progress",
-  [param("wordId").isMongoId().withMessage("Invalid wordId")],
-  validate,
+  validateZod(wordParamSchema),
   getWordSRSProgressController
 );
 
@@ -271,15 +263,7 @@ router.get(
  */
 router.post(
   "/sync",
-  [
-    body("reviews").isArray().withMessage("reviews must be an array"),
-    body("reviews.*.wordId").isMongoId().withMessage("Invalid wordId in reviews"),
-    body("reviews.*.setId").isMongoId().withMessage("Invalid setId in reviews"),
-    body("reviews.*.rating").isIn(["again", "hard", "good", "easy"]).withMessage("Invalid rating in reviews"),
-    body("reviews.*.timeSpent").optional().isInt({ min: 0 }).toInt(),
-    body("reviews.*.reviewedAt").optional().isISO8601().withMessage("reviewedAt must be ISO8601 date")
-  ],
-  validate,
+  validateZod(batchSyncSchema),
   batchSyncController
 );
 

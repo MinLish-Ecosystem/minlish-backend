@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { getProfile, updateProfile, requestEmailChangeController, confirmEmailChangeController } from '../controllers/user.controller';
 import { verifyToken } from '../middlewares/auth.middleware';
-import { updateProfileValidator, requestEmailChangeValidator, confirmEmailChangeValidator } from '../validators/user.validator';
-import { validate } from '../middlewares/validate.middleware';
+import { updateProfileSchema, requestEmailChangeSchema, confirmEmailChangeSchema } from '../validators/user.schema';
+import { validateZod } from '../middlewares/validate.middleware';
 
 /**
  * @swagger
@@ -20,12 +20,12 @@ const router = Router();
 router.get('/profile', verifyToken, getProfile);
 
 // PUT /api/v1/user/profile
-router.put('/profile', verifyToken, updateProfileValidator, validate, updateProfile);
+router.put('/profile', verifyToken, validateZod(updateProfileSchema), updateProfile);
 
 // POST /api/v1/user/request-email-change
-router.post('/request-email-change', verifyToken, requestEmailChangeValidator, validate, requestEmailChangeController);
+router.post('/request-email-change', verifyToken, validateZod(requestEmailChangeSchema), requestEmailChangeController);
 
 // POST /api/v1/user/confirm-email-change
-router.post('/confirm-email-change', verifyToken, confirmEmailChangeValidator, validate, confirmEmailChangeController);
+router.post('/confirm-email-change', verifyToken, validateZod(confirmEmailChangeSchema), confirmEmailChangeController);
 
 export default router;

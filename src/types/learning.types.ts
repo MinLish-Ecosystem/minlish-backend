@@ -26,6 +26,11 @@ export interface LearningCard {
   interval?: number;
   nextReviewDate?: string;
   setContext?: SetContext;
+  imageUrl?: string;
+  descriptionEN?: string;
+  synonyms?: string[];
+  antonyms?: string[];
+  note?: string;
 }
 
 export interface QueueSummary {

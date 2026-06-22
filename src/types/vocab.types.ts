@@ -32,6 +32,7 @@ export interface VocabSetFilters {
 export interface CreateSetDTO {
   name: string;
   description?: string;
+  coverUrl?: string;
   category?: VocabCategory;
   level?: VocabLevel;
   colorTheme?: ColorTheme;
@@ -50,6 +51,8 @@ export interface AddWordDTO {
   antonyms?: string[];
   collocations?: string[];
   note?: string;
+  imageUrl?: string;
+  audioUrl?: string;
 }
 
 // ─── Response DTOs (what API returns) ─────────────────────────────
@@ -67,6 +70,7 @@ export interface VocabSetResponse {
   id: string;
   name: string;
   description?: string;
+  coverUrl?: string;
   category: VocabCategory;
   level: VocabLevel;
   colorTheme: ColorTheme;

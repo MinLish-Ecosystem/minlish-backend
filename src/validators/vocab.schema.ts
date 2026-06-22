@@ -11,6 +11,14 @@ export const createSetSchema = z.object({
     description: z.string()
       .max(500, 'Description cannot exceed 500 characters')
       .optional(),
+    coverUrl: z.string()
+      .trim()
+      .refine(
+        (val) => val === '' || val.startsWith('http') || val.startsWith('data:image/'),
+        { message: 'Cover image must be a valid URL or Base64 data' }
+      )
+      .optional()
+      .nullable(),
     category: z.enum(
       ['General', 'Business', 'IELTS', 'TOEIC', 'Travel', 'Technology', 'Academic', 'Psychology', 'Science', 'Other'],
       { message: 'Invalid category' }
@@ -40,6 +48,14 @@ export const updateSetSchema = z.object({
     description: z.string()
       .max(500, 'Description cannot exceed 500 characters')
       .optional(),
+    coverUrl: z.string()
+      .trim()
+      .refine(
+        (val) => val === '' || val.startsWith('http') || val.startsWith('data:image/'),
+        { message: 'Cover image must be a valid URL or Base64 data' }
+      )
+      .optional()
+      .nullable(),
     category: z.enum(
       ['General', 'Business', 'IELTS', 'TOEIC', 'Travel', 'Technology', 'Academic', 'Psychology', 'Science', 'Other'],
       { message: 'Invalid category' }
@@ -91,6 +107,15 @@ export const addWordSchema = z.object({
     note: z.string()
       .max(500, 'Note cannot exceed 500 characters')
       .optional(),
+    imageUrl: z.string()
+      .trim()
+      .refine(
+        (val) => val === '' || val.startsWith('http') || val.startsWith('data:image/'),
+        { message: 'Image must be a valid URL or Base64 data' }
+      )
+      .optional()
+      .nullable(),
+    audioUrl: z.string().trim().optional().nullable(),
   }),
 });
 
@@ -126,6 +151,15 @@ export const updateWordSchema = z.object({
     note: z.string()
       .max(500, 'Note cannot exceed 500 characters')
       .optional(),
+    imageUrl: z.string()
+      .trim()
+      .refine(
+        (val) => val === '' || val.startsWith('http') || val.startsWith('data:image/'),
+        { message: 'Image must be a valid URL or Base64 data' }
+      )
+      .optional()
+      .nullable(),
+    audioUrl: z.string().trim().optional().nullable(),
   }),
 });
 

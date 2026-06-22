@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { sendSuccess } from '../utils/response.util';
-import { getUserById, updateUserProfile, requestEmailChange, confirmEmailChange } from '../services/user.service';
+import { getUserById, updateUserProfile, requestEmailChange, confirmEmailChange, getLearningProfile, updateLearningProfile } from '../services/user.service';
 import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
@@ -140,3 +140,30 @@ export const confirmEmailChangeController = catchAsync(async (req: Request, res:
   const result = await confirmEmailChange(userId, newEmail, otp);
   return sendSuccess(res, result.message);
 });
+
+/**
+ * GET /api/v1/user/learning-profile
+ * Lấy learning profile (mục tiêu học tập, cài đặt ôn tập)
+ */
+export const getLearningProfileController = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.id || req.user?._id?.toString();
+  if (!userId) {
+    throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
+  }
+  const profile = await getLearningProfile(userId);
+  return sendSuccess(res, 'Learning profile fetched successfully', profile);
+});
+
+/**
+ * PUT /api/v1/user/learning-profile
+ * Cập nhật learning profile
+ */
+export const updateLearningProfileController = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.id || req.user?._id?.toString();
+  if (!userId) {
+    throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
+  }
+  const profile = await updateLearningProfile(userId, req.body);
+  return sendSuccess(res, 'Learning profile updated successfully', profile);
+});
+

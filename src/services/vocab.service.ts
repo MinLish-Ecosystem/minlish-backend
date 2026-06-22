@@ -5,6 +5,7 @@ import { LearningProgress } from "../models/LearningProgress";
 import { AppError } from "../utils/AppError";
 import { HttpStatus } from "../constants/httpStatus";
 import { ErrorCodes } from "../constants/errorCodes";
+import { uploadImage, updateImage, deleteImage, getPublicIdFromUrl } from "./cloudinary.service";
 import {
   VocabSetFilters,
   CreateSetDTO,
@@ -57,6 +58,7 @@ function mapSetToResponse(s: any): VocabSetResponse {
     id: s._id.toString(),
     name: s.name,
     description: s.description,
+    coverUrl: s.coverUrl ?? "",
     category: s.category,
     level: s.level,
     colorTheme: s.colorTheme,
@@ -306,9 +308,16 @@ export async function createSet(
   userId: string,
   data: CreateSetDTO,
 ): Promise<VocabSetResponse> {
+  let finalCoverUrl = data.coverUrl;
+  if (data.coverUrl && (data.coverUrl.startsWith('data:image/') || data.coverUrl.includes('base64,'))) {
+    const uploadRes = await uploadImage(data.coverUrl, 'minlish_covers');
+    finalCoverUrl = uploadRes.secure_url;
+  }
+
   const set = await new VocabularySet({
     userId: new Types.ObjectId(userId),
     ...data,
+    coverUrl: finalCoverUrl,
   }).save();
 
   return mapSetToResponse(set.toObject());
@@ -325,15 +334,34 @@ export async function updateSet(
   userId: string,
   data: Partial<CreateSetDTO>,
 ): Promise<VocabSetResponse> {
-  const set = await VocabularySet.findOneAndUpdate(
-    { _id: setId, userId: new Types.ObjectId(userId), isDeleted: { $ne: true } },
-    { $set: data },
-    { new: true },
-  ).lean();
+  const existingSet = await VocabularySet.findOne({
+    _id: setId,
+    userId: new Types.ObjectId(userId),
+    isDeleted: { $ne: true }
+  });
 
-  if (!set) {
+  if (!existingSet) {
     throw new AppError("Set not found or unauthorized", HttpStatus.NOT_FOUND, ErrorCodes.FORBIDDEN);
   }
+
+  let finalCoverUrl = data.coverUrl;
+  if (data.coverUrl !== undefined) {
+    if (data.coverUrl && (data.coverUrl.startsWith('data:image/') || data.coverUrl.includes('base64,'))) {
+      const uploadRes = await updateImage(existingSet.coverUrl, data.coverUrl, 'minlish_covers');
+      finalCoverUrl = uploadRes.secure_url;
+    }
+  }
+
+  const set = await VocabularySet.findOneAndUpdate(
+    { _id: setId, userId: new Types.ObjectId(userId), isDeleted: { $ne: true } },
+    { 
+      $set: {
+        ...data,
+        ...(data.coverUrl !== undefined ? { coverUrl: finalCoverUrl } : {})
+      } 
+    },
+    { new: true },
+  ).lean();
 
   return mapSetToResponse(set);
 }
@@ -353,6 +381,17 @@ export async function deleteSet(setId: string, userId: string): Promise<void> {
 
   if (!set) {
     throw new AppError("Not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  if (set.coverUrl) {
+    const publicId = getPublicIdFromUrl(set.coverUrl);
+    if (publicId) {
+      try {
+        await deleteImage(publicId);
+      } catch (err) {
+        console.error("[Cloudinary] Failed to delete cover image on set deletion:", err);
+      }
+    }
   }
 
   const now = new Date();
@@ -490,9 +529,16 @@ export async function addWord(
 ): Promise<WordResponse> {
   await ensureOwnedSet(setId, userId);
 
+  let finalImageUrl = data.imageUrl;
+  if (data.imageUrl && (data.imageUrl.startsWith('data:image/') || data.imageUrl.includes('base64,'))) {
+    const uploadRes = await uploadImage(data.imageUrl, 'minlish_words');
+    finalImageUrl = uploadRes.secure_url;
+  }
+
   const word = await new Word({
     setId: new Types.ObjectId(setId),
     ...data,
+    imageUrl: finalImageUrl,
   }).save();
 
   await VocabularySet.findByIdAndUpdate(setId, { $inc: { totalWords: 1 } });
@@ -513,15 +559,34 @@ export async function updateWord(
 ): Promise<WordResponse> {
   await ensureOwnedSet(setId, userId);
 
-  const word = await Word.findOneAndUpdate(
-    { _id: wordId, setId: new Types.ObjectId(setId), isDeleted: { $ne: true } },
-    { $set: data },
-    { new: true },
-  ).lean();
+  const existingWord = await Word.findOne({
+    _id: wordId,
+    setId: new Types.ObjectId(setId),
+    isDeleted: { $ne: true }
+  });
 
-  if (!word) {
+  if (!existingWord) {
     throw new AppError("Word not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
   }
+
+  let finalImageUrl = data.imageUrl;
+  if (data.imageUrl !== undefined) {
+    if (data.imageUrl && (data.imageUrl.startsWith('data:image/') || data.imageUrl.includes('base64,'))) {
+      const uploadRes = await updateImage(existingWord.imageUrl, data.imageUrl, 'minlish_words');
+      finalImageUrl = uploadRes.secure_url;
+    }
+  }
+
+  const word = await Word.findOneAndUpdate(
+    { _id: wordId, setId: new Types.ObjectId(setId), isDeleted: { $ne: true } },
+    { 
+      $set: {
+        ...data,
+        ...(data.imageUrl !== undefined ? { imageUrl: finalImageUrl } : {})
+      } 
+    },
+    { new: true },
+  ).lean();
 
   return mapWordToResponse(word);
 }

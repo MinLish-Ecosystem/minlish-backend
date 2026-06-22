@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { getProfile, updateProfile, requestEmailChangeController, confirmEmailChangeController } from '../controllers/user.controller';
+import { getProfile, updateProfile, requestEmailChangeController, confirmEmailChangeController, getLearningProfileController, updateLearningProfileController } from '../controllers/user.controller';
 import { verifyToken } from '../middlewares/auth.middleware';
-import { updateProfileSchema, requestEmailChangeSchema, confirmEmailChangeSchema } from '../validators/user.schema';
+import { updateProfileSchema, requestEmailChangeSchema, confirmEmailChangeSchema, updateLearningProfileSchema } from '../validators/user.schema';
 import { validateZod } from '../middlewares/validate.middleware';
 
 /**
@@ -27,5 +27,11 @@ router.post('/request-email-change', verifyToken, validateZod(requestEmailChange
 
 // POST /api/v1/user/confirm-email-change
 router.post('/confirm-email-change', verifyToken, validateZod(confirmEmailChangeSchema), confirmEmailChangeController);
+
+// GET /api/v1/user/learning-profile
+router.get('/learning-profile', verifyToken, getLearningProfileController);
+
+// PUT /api/v1/user/learning-profile
+router.put('/learning-profile', verifyToken, validateZod(updateLearningProfileSchema), updateLearningProfileController);
 
 export default router;

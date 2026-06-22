@@ -26,6 +26,7 @@ export interface IVocabularySet extends Document {
   userId: Types.ObjectId;
   name: string;
   description?: string;
+  coverUrl?: string;
   category: VocabCategory;
   level: VocabLevel;
   colorTheme: ColorTheme;
@@ -97,6 +98,10 @@ const VocabularySetSchema = new Schema<IVocabularySet>(
     clonedFrom: {
       type: Schema.Types.ObjectId,
       ref: "VocabularySet",
+    },
+    coverUrl: {
+      type: String,
+      default: "",
     },
     isDeleted: {
       type: Boolean,

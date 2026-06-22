@@ -2,12 +2,14 @@
 // User Service — Nhàn phụ trách
 // ─────────────────────────────────────────────────────────────────────────────
 import { User } from '../models/User';
+import { UserProfile } from '../models/UserProfile';
 import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
 import { OTP } from '../models/OTP';
 import { generateOTP, getOTPExpiresAt } from '../utils/otp.util';
 import { sendEmailChangeRequestEmail } from './mail.service';
+import { updateImage } from './cloudinary.service';
 
 /**
  * Lấy thông tin profile của user theo ID
@@ -49,7 +51,12 @@ export const updateUserProfile = async (
   }
 
   if (data.avatar !== undefined) {
-    user.avatar = data.avatar ? data.avatar.trim() : null;
+    if (data.avatar && (data.avatar.startsWith('data:image/') || data.avatar.includes('base64,'))) {
+      const uploadRes = await updateImage(user.avatar, data.avatar, 'minlish_avatars');
+      user.avatar = uploadRes.secure_url;
+    } else {
+      user.avatar = data.avatar ? data.avatar.trim() : null;
+    }
   }
 
   await user.save();
@@ -142,3 +149,93 @@ export const confirmEmailChange = async (userId: string, newEmail: string, otp: 
 
   return { message: 'Email đã được cập nhật thành công.' };
 };
+
+/**
+ * Lấy learning profile của user (mục tiêu học tập, cài đặt)
+ */
+export const getLearningProfile = async (userId: string) => {
+  let profile = await UserProfile.findOne({ userId });
+  if (!profile) {
+    profile = await UserProfile.create({
+      userId,
+      learningGoal: 'general',
+      dailyGoal: 20,
+      reviewPerDay: 40,
+      reminderTime: '20:00',
+      preferences: {
+        pushNotification: true,
+        emailNotification: true,
+        soundEffect: true,
+      }
+    });
+  }
+  return {
+    learningGoal: profile.learningGoal,
+    targetLevel: profile.targetLevel,
+    currentLevel: profile.currentLevel,
+    dailyGoal: profile.dailyGoal,
+    reviewPerDay: profile.reviewPerDay ?? 40,
+    reminderTime: profile.reminderTime,
+    timezone: profile.timezone,
+    preferences: {
+      pushNotification: profile.preferences.pushNotification,
+      emailNotification: profile.preferences.emailNotification,
+      soundEffect: profile.preferences.soundEffect,
+    },
+  };
+};
+
+/**
+ * Cập nhật learning profile (upsert nếu chưa tồn tại)
+ */
+export const updateLearningProfile = async (
+  userId: string,
+  data: Partial<{
+    learningGoal: "ielts" | "toeic" | "business" | "travel" | "general" | "other";
+    targetLevel: "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+    dailyGoal: number;
+    reviewPerDay: number;
+    reminderTime: string;
+    timezone: string;
+    preferences: { pushNotification?: boolean; emailNotification?: boolean; soundEffect?: boolean };
+  }>,
+) => {
+  const updateData: Record<string, any> = {};
+  if (data.learningGoal !== undefined) updateData.learningGoal = data.learningGoal;
+  if (data.targetLevel !== undefined) updateData.targetLevel = data.targetLevel;
+  if (data.dailyGoal !== undefined) updateData.dailyGoal = data.dailyGoal;
+  if (data.reviewPerDay !== undefined) updateData.reviewPerDay = data.reviewPerDay;
+  if (data.reminderTime !== undefined) updateData.reminderTime = data.reminderTime;
+  if (data.timezone !== undefined) updateData.timezone = data.timezone;
+  if (data.preferences?.pushNotification !== undefined) {
+    updateData['preferences.pushNotification'] = data.preferences.pushNotification;
+  }
+  if (data.preferences?.emailNotification !== undefined) {
+    updateData['preferences.emailNotification'] = data.preferences.emailNotification;
+  }
+  if (data.preferences?.soundEffect !== undefined) {
+    updateData['preferences.soundEffect'] = data.preferences.soundEffect;
+  }
+
+  const profile = await UserProfile.findOneAndUpdate(
+    { userId },
+    { $set: updateData },
+    { new: true, upsert: true, runValidators: true },
+  );
+
+  return {
+    learningGoal: profile.learningGoal,
+    targetLevel: profile.targetLevel,
+    currentLevel: profile.currentLevel,
+    dailyGoal: profile.dailyGoal,
+    reviewPerDay: profile.reviewPerDay ?? 40,
+    reminderTime: profile.reminderTime,
+    timezone: profile.timezone,
+    preferences: {
+      pushNotification: profile.preferences.pushNotification,
+      emailNotification: profile.preferences.emailNotification,
+      soundEffect: profile.preferences.soundEffect,
+    },
+  };
+};
+

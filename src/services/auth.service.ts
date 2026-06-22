@@ -116,15 +116,23 @@ export const refreshTokenService = async (refreshToken: string) => {
     throw new AppError('Refresh token has been revoked', HttpStatus.UNAUTHORIZED, ErrorCodes.TOKEN_REVOKED);
   }
 
-  // Tạo Access Token mới
+  // Tạo Access Token mới và Refresh Token mới (RTR)
   const newPayload: TokenPayload = {
     userId: (user._id as any).toString(),
     email: user.email,
     role: user.role,
   };
   const newAccessToken = signAccessToken(newPayload);
+  const newRefreshToken = signRefreshToken(newPayload);
 
-  return { accessToken: newAccessToken };
+  // Cập nhật Refresh Token mới vào cơ sở dữ liệu
+  user.refreshToken = newRefreshToken;
+  await user.save();
+
+  return { 
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken
+  };
 };
 
 /**

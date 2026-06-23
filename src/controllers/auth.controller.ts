@@ -1,10 +1,16 @@
-import { Request, Response } from 'express';
-import { loginUser, registerUser, refreshTokenService, logoutUser, verifyEmailOTP } from '../services/auth.service';
-import { sendSuccess } from '../utils/response.util';
-import { catchAsync } from '../utils/catchAsync';
-import { AppError } from '../utils/AppError';
-import { HttpStatus } from '../constants/httpStatus';
-import { ErrorCodes } from '../constants/errorCodes';
+import { Request, Response } from "express";
+import {
+  loginUser,
+  registerUser,
+  refreshTokenService,
+  logoutUser,
+  verifyEmailOTP,
+} from "../services/auth.service";
+import { sendSuccess } from "../utils/response.util";
+import { catchAsync } from "../utils/catchAsync";
+import { AppError } from "../utils/AppError";
+import { HttpStatus } from "../constants/httpStatus";
+import { ErrorCodes } from "../constants/errorCodes";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTH CONTROLLERS
@@ -40,7 +46,7 @@ import { ErrorCodes } from '../constants/errorCodes';
  */
 export const login = catchAsync(async (req: Request, res: Response) => {
   const result = await loginUser(req.body);
-  sendSuccess(res, 'Login successful', result);
+  sendSuccess(res, "Login successful", result);
 });
 
 /**
@@ -61,17 +67,21 @@ export const login = catchAsync(async (req: Request, res: Response) => {
  *                 type: string
  *     responses:
  *       200:
- *         description: Trả về Access Token mới
+ *         description: Trả về Access + Refresh Token mới
  *       401:
  *         description: Refresh Token không hợp lệ hoặc đã hết hạn
  */
 export const refreshToken = catchAsync(async (req: Request, res: Response) => {
   const { refreshToken: token } = req.body;
   if (!token) {
-    throw new AppError('Refresh token is required', HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+    throw new AppError(
+      "Refresh token is required",
+      HttpStatus.BAD_REQUEST,
+      ErrorCodes.VALIDATION_FAILED,
+    );
   }
   const result = await refreshTokenService(token);
-  sendSuccess(res, 'Token refreshed successfully', result);
+  sendSuccess(res, "Token refreshed successfully", result);
 });
 
 /**
@@ -91,15 +101,22 @@ export const refreshToken = catchAsync(async (req: Request, res: Response) => {
 export const logout = catchAsync(async (req: Request, res: Response) => {
   const userId = (req.user?._id as any)?.toString();
   if (!userId) {
-    throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
+    throw new AppError(
+      "Unauthorized",
+      HttpStatus.UNAUTHORIZED,
+      ErrorCodes.UNAUTHORIZED,
+    );
   }
-  
+
   // Lấy access token từ header
   const authHeader = req.headers.authorization;
-  const accessToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : '';
+  const accessToken =
+    authHeader && authHeader.startsWith("Bearer ")
+      ? authHeader.split(" ")[1]
+      : "";
 
   await logoutUser(userId, accessToken);
-  sendSuccess(res, 'Logged out successfully');
+  sendSuccess(res, "Logged out successfully");
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,7 +156,7 @@ export const logout = catchAsync(async (req: Request, res: Response) => {
  */
 export const register = catchAsync(async (req: Request, res: Response) => {
   const result = await registerUser(req.body);
-  sendSuccess(res, 'Registration successful', result, HttpStatus.CREATED);
+  sendSuccess(res, "Registration successful", result, HttpStatus.CREATED);
 });
 
 /**

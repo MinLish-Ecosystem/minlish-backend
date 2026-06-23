@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { User } from '../models/User';
 import { UserProfile } from '../models/UserProfile';
+
 import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
@@ -238,4 +239,3 @@ export const updateLearningProfile = async (
     },
   };
 };
-

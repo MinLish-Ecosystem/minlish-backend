@@ -2,8 +2,8 @@
 // Stats Routes — Phase 4-B
 // ─────────────────────────────────────────────────────────────────────────────
 import { Router } from 'express';
-import { query } from 'express-validator';
-import { validate } from '../middlewares/validate.middleware';
+import { validateZod } from '../middlewares/validate.middleware';
+import { getStatsDaysSchema } from '../validators/stats.schema';
 import { verifyToken } from '../middlewares/auth.middleware';
 import {
   getDashboardStatsController,
@@ -122,8 +122,7 @@ router.get('/dashboard', getDashboardStatsController);
  */
 router.get(
   '/daily',
-  [query('days').optional().isInt({ min: 7, max: 365 }).toInt().withMessage('days must be between 7 and 365')],
-  validate,
+  validateZod(getStatsDaysSchema),
   getDailyStatsController,
 );
 
@@ -229,8 +228,7 @@ router.get('/heatmap', getHeatmapController);
  */
 router.get(
   '/retention',
-  [query('days').optional().isInt({ min: 7, max: 365 }).toInt().withMessage('days must be between 7 and 365')],
-  validate,
+  validateZod(getStatsDaysSchema),
   getRetentionController,
 );
 

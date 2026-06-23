@@ -1,28 +1,33 @@
 import { Request, Response, NextFunction } from 'express';
-import { validationResult } from 'express-validator';
+import { ZodType } from 'zod';
 import { sendError } from '../utils/response.util';
 import { ErrorCodes } from '../constants/errorCodes';
 
 /**
- * Middleware bắt lỗi từ express-validator
- * Đặt SAU các validator rules, TRƯỚC controller
- *
- * Cách dùng trong route:
- *   router.post('/login', loginValidator, validate, loginController);
+ * Middleware validate request dùng Zod
+ * Tự động coerce và ghi đè req.body, req.query, req.params bằng dữ liệu đã parsed thành công
  */
-export const validate = (req: Request, res: Response, next: NextFunction): void => {
-  const errors = validationResult(req);
+export const validateZod = (schema: ZodType) => (req: Request, res: Response, next: NextFunction): void => {
+  const result = schema.safeParse({
+    body: req.body,
+    query: req.query,
+    params: req.params,
+  });
 
-  if (!errors.isEmpty()) {
-    // Format lại danh sách lỗi thành mảng đơn giản
-    const formattedErrors = errors.array().map((err) => ({
-      field: err.type === 'field' ? err.path : 'unknown',
-      message: err.msg,
+  if (!result.success) {
+    const errors = result.error.issues.map((e) => ({
+      field: e.path.length > 1 ? e.path.slice(1).join('.') : String(e.path[0] || 'unknown'),
+      message: e.message,
     }));
 
-    sendError(res, 'Validation failed', 422, ErrorCodes.VALIDATION_FAILED, formattedErrors);
+    sendError(res, 'Validation failed', 422, ErrorCodes.VALIDATION_FAILED, errors);
     return;
   }
+
+  const data = result.data as any;
+  if (data.body) req.body = data.body;
+  if (data.query) req.query = data.query;
+  if (data.params) req.params = data.params;
 
   next();
 };

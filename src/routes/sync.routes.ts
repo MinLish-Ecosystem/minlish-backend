@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { verifyToken } from "../middlewares/auth.middleware";
-import { validate } from "../middlewares/validate.middleware";
-import { query } from "express-validator";
+import { validateZod } from "../middlewares/validate.middleware";
+import { deltaSyncSchema } from "../validators/sync.schema";
 import { getDeltaChangesController } from "../controllers/sync.controller";
 
 /**
@@ -60,8 +60,7 @@ router.use(verifyToken);
  */
 router.get(
   "/delta",
-  [query("lastSyncAt").optional().isISO8601().withMessage("lastSyncAt must be ISO8601 date-time format")],
-  validate,
+  validateZod(deltaSyncSchema),
   getDeltaChangesController
 );
 

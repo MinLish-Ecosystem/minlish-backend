@@ -30,10 +30,10 @@ import { ErrorCodes } from '../constants/errorCodes';
  *         description: Danh sách người dùng
  */
 export const listUsersController = catchAsync(async (req: Request, res: Response) => {
-  const page = Number(req.query.page || 1);
-  const limit = Number(req.query.limit || 20);
+  const page = req.query.page ? Number(req.query.page) : undefined;
+  const limit = req.query.limit ? Number(req.query.limit) : undefined;
   const result = await adminService.listUsers(page, limit);
-  return sendSuccess(res, 'Users listed', result);
+  return sendSuccess(res, 'Users fetched successfully', result.data, 200, result.pagination);
 });
 
 /**
@@ -59,7 +59,7 @@ export const listUsersController = catchAsync(async (req: Request, res: Response
 export const getUserDetailController = catchAsync(async (req: Request, res: Response) => {
   const id = req.params.id;
   const user = await adminService.getUserDetail(id);
-  return sendSuccess(res, 'User detail', user);
+  return sendSuccess(res, 'User details fetched successfully', user);
 });
 
 /**
@@ -94,9 +94,8 @@ export const banUserController = catchAsync(async (req: Request, res: Response) 
   const adminId = (req.user?._id as any)?.toString();
   const id = req.params.id;
   const reason = req.body.reason;
-  if (!reason) throw new AppError('reason required', HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
   await adminService.banUser(adminId, id, reason);
-  return sendSuccess(res, 'User banned', null);
+  return sendSuccess(res, 'User banned successfully');
 });
 
 /**
@@ -121,7 +120,7 @@ export const unbanUserController = catchAsync(async (req: Request, res: Response
   const adminId = (req.user?._id as any)?.toString();
   const id = req.params.id;
   await adminService.unbanUser(adminId, id);
-  return sendSuccess(res, 'User unbanned', null);
+  return sendSuccess(res, 'User unbanned successfully');
 });
 
 /**
@@ -146,7 +145,7 @@ export const deleteUserController = catchAsync(async (req: Request, res: Respons
   const adminId = (req.user?._id as any)?.toString();
   const id = req.params.id;
   await adminService.deleteUser(adminId, id);
-  return sendSuccess(res, 'User deleted', null);
+  return sendSuccess(res, 'User deleted successfully');
 });
 
 /**
@@ -163,7 +162,7 @@ export const deleteUserController = catchAsync(async (req: Request, res: Respons
  */
 export const getAdminStatsController = catchAsync(async (_req: Request, res: Response) => {
   const stats = await adminService.getAdminStats();
-  return sendSuccess(res, 'Admin stats', stats);
+  return sendSuccess(res, 'Admin stats fetched successfully', stats);
 });
 
 /**
@@ -190,10 +189,10 @@ export const getAdminStatsController = catchAsync(async (_req: Request, res: Res
  *         description: Danh sách sets
  */
 export const listPublicSetsController = catchAsync(async (req: Request, res: Response) => {
-  const page = Number(req.query.page || 1);
-  const limit = Number(req.query.limit || 20);
+  const page = req.query.page ? Number(req.query.page) : undefined;
+  const limit = req.query.limit ? Number(req.query.limit) : undefined;
   const result = await adminService.listPublicSets(page, limit);
-  return sendSuccess(res, 'Public sets', result);
+  return sendSuccess(res, 'Public sets fetched successfully', result.data, 200, result.pagination);
 });
 
 /**
@@ -228,7 +227,7 @@ export const unpublishSetController = catchAsync(async (req: Request, res: Respo
   const id = req.params.id;
   const reason = req.body.reason;
   await adminService.unpublishSet(adminId, id, reason);
-  return sendSuccess(res, 'Set unpublished', null);
+  return sendSuccess(res, 'Set unpublished successfully');
 });
 
 /**
@@ -255,10 +254,10 @@ export const unpublishSetController = catchAsync(async (req: Request, res: Respo
  *         description: Danh sách audit logs
  */
 export const getAuditLogsController = catchAsync(async (req: Request, res: Response) => {
-  const page = Number(req.query.page || 1);
-  const limit = Number(req.query.limit || 50);
+  const page = req.query.page ? Number(req.query.page) : undefined;
+  const limit = req.query.limit ? Number(req.query.limit) : undefined;
   const result = await adminService.getAuditLogs(page, limit);
-  return sendSuccess(res, 'Audit logs', result);
+  return sendSuccess(res, 'Audit logs fetched successfully', result.data, 200, result.pagination);
 });
 
 /**

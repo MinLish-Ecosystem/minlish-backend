@@ -1,18 +1,6 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// User Controller — Nhàn phụ trách
-// ─────────────────────────────────────────────────────────────────────────────
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { sendSuccess } from '../utils/response.util';
-import {
-  getUserById,
-  updateUserProfile,
-  requestEmailChange,
-  confirmEmailChange,
-  getLearningProfile,
-  updateLearningProfile,
-  registerFCMToken,
-  deleteFCMToken,
-} from '../services/user.service';
+import { getUserById, updateUserProfile, requestEmailChange, confirmEmailChange, getLearningProfile, updateLearningProfile } from '../services/user.service';
 import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
@@ -32,25 +20,16 @@ import { catchAsync } from '../utils/catchAsync';
  *       401:
  *         description: Chưa đăng nhập
  */
-export const getProfile = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const getProfile = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?._id?.toString();
 
-  try {
-    const userId = (req.user?._id as string | undefined)?.toString();
-
-    if (!userId) {
-      throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
-    }
-
-    const profile = await getUserById(userId);
-    sendSuccess(res, 'Lấy thông tin profile thành công', profile);
-  } catch (error) {
-    next(error);
+  if (!userId) {
+    throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
   }
-};
+
+  const profile = await getUserById(userId);
+  return sendSuccess(res, 'Profile fetched successfully', profile);
+});
 
 /**
  * @swagger
@@ -81,14 +60,14 @@ export const getProfile = async (
  *         description: Chưa đăng nhập
  */
 export const updateProfile = catchAsync(async (req: Request, res: Response) => {
-  const userId = (req.user?._id as string | undefined)?.toString();
+  const userId = req.user?._id?.toString();
 
   if (!userId) {
     throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
   }
 
   const profile = await updateUserProfile(userId, req.body);
-  sendSuccess(res, 'Cập nhật profile thành công', profile);
+  return sendSuccess(res, 'Profile updated successfully', profile);
 });
 
 /**
@@ -117,12 +96,12 @@ export const updateProfile = catchAsync(async (req: Request, res: Response) => {
  *         description: Email đã có người sử dụng
  */
 export const requestEmailChangeController = catchAsync(async (req: Request, res: Response) => {
-  const userId = (req.user?._id as string | undefined)?.toString();
+  const userId = req.user?._id?.toString();
   if (!userId) throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
 
   const { newEmail } = req.body as { newEmail: string };
   const result = await requestEmailChange(userId, newEmail);
-  sendSuccess(res, result.message, null);
+  return sendSuccess(res, result.message);
 });
 
 /**
@@ -154,12 +133,12 @@ export const requestEmailChangeController = catchAsync(async (req: Request, res:
  *         description: OTP không hợp lệ hoặc email đã tồn tại
  */
 export const confirmEmailChangeController = catchAsync(async (req: Request, res: Response) => {
-  const userId = (req.user?._id as string | undefined)?.toString();
+  const userId = req.user?._id?.toString();
   if (!userId) throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
 
   const { newEmail, otp } = req.body as { newEmail: string; otp: string };
   const result = await confirmEmailChange(userId, newEmail, otp);
-  sendSuccess(res, result.message, null);
+  return sendSuccess(res, result.message);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -216,15 +195,14 @@ export const confirmEmailChangeController = catchAsync(async (req: Request, res:
  *       404:
  *         description: Learning profile chưa được tạo
  */
-export const getLearningProfileController = catchAsync(
-  async (req: Request, res: Response) => {
-    const userId = (req.user?._id as string | undefined)?.toString();
-    if (!userId)
-      throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
-    const profile = await getLearningProfile(userId);
-    sendSuccess(res, 'Learning profile fetched', profile);
-  },
-);
+export const getLearningProfileController = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.id || req.user?._id?.toString();
+  if (!userId) {
+    throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
+  }
+  const profile = await getLearningProfile(userId);
+  return sendSuccess(res, 'Learning profile fetched successfully', profile);
+});
 
 /**
  * @swagger
@@ -275,92 +253,11 @@ export const getLearningProfileController = catchAsync(
  *       401:
  *         description: Chưa đăng nhập
  */
-export const updateLearningProfileController = catchAsync(
-  async (req: Request, res: Response) => {
-    const userId = (req.user?._id as string | undefined)?.toString();
-    if (!userId)
-      throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
-    const profile = await updateLearningProfile(userId, req.body);
-    sendSuccess(res, 'Learning profile updated', profile);
-  },
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Phase 5-B: FCM Token Controllers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * @swagger
- * /api/v1/user/fcm-token:
- *   post:
- *     tags: [User]
- *     summary: Đăng ký FCM token để nhận push notification
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [token, deviceId, platform]
- *             properties:
- *               token:
- *                 type: string
- *                 description: FCM registration token
- *               deviceId:
- *                 type: string
- *                 description: Unique device identifier
- *               platform:
- *                 type: string
- *                 enum: [android, ios, web]
- *     responses:
- *       200:
- *         description: Đăng ký thiết bị thành công
- *       400:
- *         description: Dữ liệu không hợp lệ
- *       401:
- *         description: Chưa đăng nhập
- */
-export const registerFCMTokenController = catchAsync(
-  async (req: Request, res: Response) => {
-    const userId = (req.user?._id as string | undefined)?.toString()!;
-    const { token, deviceId, platform } = req.body;
-    await registerFCMToken(userId, { token, deviceId, platform });
-    sendSuccess(res, 'Device registered', null);
-  },
-);
-
-/**
- * @swagger
- * /api/v1/user/fcm-token:
- *   delete:
- *     tags: [User]
- *     summary: Huỷ đăng ký FCM token (khi logout hoặc tắt thông báo)
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [deviceId]
- *             properties:
- *               deviceId:
- *                 type: string
- *                 description: Unique device identifier
- *     responses:
- *       200:
- *         description: Huỷ đăng ký thành công
- *       401:
- *         description: Chưa đăng nhập
- */
-export const deleteFCMTokenController = catchAsync(
-  async (req: Request, res: Response) => {
-    const userId = (req.user?._id as string | undefined)?.toString()!;
-    const { deviceId } = req.body;
-    await deleteFCMToken(userId, deviceId);
-    sendSuccess(res, 'Device unregistered', null);
-  },
-);
+export const updateLearningProfileController = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.id || req.user?._id?.toString();
+  if (!userId) {
+    throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
+  }
+  const profile = await updateLearningProfile(userId, req.body);
+  return sendSuccess(res, 'Learning profile updated successfully', profile);
+});

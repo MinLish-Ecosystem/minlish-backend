@@ -1,23 +1,8 @@
 import { Router } from 'express';
-import {
-  getProfile,
-  updateProfile,
-  requestEmailChangeController,
-  confirmEmailChangeController,
-  getLearningProfileController,
-  updateLearningProfileController,
-  registerFCMTokenController,
-  deleteFCMTokenController,
-} from '../controllers/user.controller';
+import { getProfile, updateProfile, requestEmailChangeController, confirmEmailChangeController, getLearningProfileController, updateLearningProfileController } from '../controllers/user.controller';
 import { verifyToken } from '../middlewares/auth.middleware';
-import {
-  updateProfileValidator,
-  requestEmailChangeValidator,
-  confirmEmailChangeValidator,
-  learningProfileValidator,
-  fcmTokenValidator,
-} from '../validators/user.validator';
-import { validate } from '../middlewares/validate.middleware';
+import { updateProfileSchema, requestEmailChangeSchema, confirmEmailChangeSchema, updateLearningProfileSchema } from '../validators/user.schema';
+import { validateZod } from '../middlewares/validate.middleware';
 
 /**
  * @swagger
@@ -88,7 +73,7 @@ router.get('/profile', verifyToken, getProfile);
  *       401:
  *         description: Chưa đăng nhập
  */
-router.put('/profile', verifyToken, updateProfileValidator, validate, updateProfile);
+router.put('/profile', verifyToken, validateZod(updateProfileSchema), updateProfile);
 
 /**
  * @swagger
@@ -119,13 +104,7 @@ router.put('/profile', verifyToken, updateProfileValidator, validate, updateProf
  *       401:
  *         description: Chưa đăng nhập
  */
-router.post(
-  '/request-email-change',
-  verifyToken,
-  requestEmailChangeValidator,
-  validate,
-  requestEmailChangeController,
-);
+router.post('/request-email-change', verifyToken, validateZod(requestEmailChangeSchema), requestEmailChangeController);
 
 /**
  * @swagger
@@ -160,13 +139,7 @@ router.post(
  *       410:
  *         description: OTP đã hết hạn
  */
-router.post(
-  '/confirm-email-change',
-  verifyToken,
-  confirmEmailChangeValidator,
-  validate,
-  confirmEmailChangeController,
-);
+router.post('/confirm-email-change', verifyToken, validateZod(confirmEmailChangeSchema), confirmEmailChangeController);
 
 /**
  * @swagger
@@ -259,78 +232,6 @@ router.get('/learning-profile', verifyToken, getLearningProfileController);
  *       401:
  *         description: Chưa đăng nhập
  */
-router.put(
-  '/learning-profile',
-  verifyToken,
-  learningProfileValidator,
-  validate,
-  updateLearningProfileController,
-);
-
-/**
- * @swagger
- * /api/v1/user/fcm-token:
- *   post:
- *     summary: Đăng ký hoặc cập nhật FCM Token cho thiết bị (Push Notifications)
- *     description: Upsert theo deviceId — cùng thiết bị sẽ cập nhật token mới thay vì tạo bản ghi trùng
- *     tags: [User]
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - token
- *               - deviceId
- *               - platform
- *             properties:
- *               token:
- *                 type: string
- *                 example: "dGhpcyBpcyBhIHNhbXBsZSBGQ00gdG9rZW4..."
- *               deviceId:
- *                 type: string
- *                 example: "device-uuid-1234"
- *               platform:
- *                 type: string
- *                 enum: [android, ios, web]
- *                 example: "android"
- *     responses:
- *       200:
- *         description: FCM token đã được đăng ký
- *       401:
- *         description: Chưa đăng nhập
- */
-router.post('/fcm-token', verifyToken, fcmTokenValidator, validate, registerFCMTokenController);
-
-/**
- * @swagger
- * /api/v1/user/fcm-token:
- *   delete:
- *     summary: Xóa FCM Token của thiết bị (khi logout hoặc hủy thông báo)
- *     tags: [User]
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - deviceId
- *             properties:
- *               deviceId:
- *                 type: string
- *                 example: "device-uuid-1234"
- *     responses:
- *       200:
- *         description: FCM token đã được xóa
- *       401:
- *         description: Chưa đăng nhập
- */
-router.delete('/fcm-token', verifyToken, deleteFCMTokenController);
+router.put('/learning-profile', verifyToken, validateZod(updateLearningProfileSchema), updateLearningProfileController);
 
 export default router;

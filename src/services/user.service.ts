@@ -3,13 +3,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { User } from '../models/User';
 import { UserProfile } from '../models/UserProfile';
-import { FCMToken } from '../models/FCMToken';
+
 import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
 import { OTP } from '../models/OTP';
 import { generateOTP, getOTPExpiresAt } from '../utils/otp.util';
 import { sendEmailChangeRequestEmail } from './mail.service';
+import { updateImage } from './cloudinary.service';
 
 /**
  * Lấy thông tin profile của user theo ID
@@ -51,7 +52,12 @@ export const updateUserProfile = async (
   }
 
   if (data.avatar !== undefined) {
-    user.avatar = data.avatar ? data.avatar.trim() : null;
+    if (data.avatar && (data.avatar.startsWith('data:image/') || data.avatar.includes('base64,'))) {
+      const uploadRes = await updateImage(user.avatar, data.avatar, 'minlish_avatars');
+      user.avatar = uploadRes.secure_url;
+    } else {
+      user.avatar = data.avatar ? data.avatar.trim() : null;
+    }
   }
 
   await user.save();
@@ -145,32 +151,36 @@ export const confirmEmailChange = async (userId: string, newEmail: string, otp: 
   return { message: 'Email đã được cập nhật thành công.' };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Phase 2-B: User Learning Profile
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Lấy learning profile của user (goalsinh học tập, cài đặt)
+ * Lấy learning profile của user (mục tiêu học tập, cài đặt)
  */
 export const getLearningProfile = async (userId: string) => {
-  const profile = await UserProfile.findOne({ userId });
+  let profile = await UserProfile.findOne({ userId });
   if (!profile) {
-    throw new AppError(
-      'Learning profile not found',
-      HttpStatus.NOT_FOUND,
-      ErrorCodes.USER_NOT_FOUND,
-    );
+    profile = await UserProfile.create({
+      userId,
+      learningGoal: 'general',
+      dailyGoal: 20,
+      reviewPerDay: 40,
+      reminderTime: '20:00',
+      preferences: {
+        pushNotification: true,
+        emailNotification: true,
+        soundEffect: true,
+      }
+    });
   }
   return {
     learningGoal: profile.learningGoal,
     targetLevel: profile.targetLevel,
     currentLevel: profile.currentLevel,
     dailyGoal: profile.dailyGoal,
-    reviewPerDay: profile.reviewPerDay ?? 20,
+    reviewPerDay: profile.reviewPerDay ?? 40,
     reminderTime: profile.reminderTime,
     timezone: profile.timezone,
     preferences: {
       pushNotification: profile.preferences.pushNotification,
+      emailNotification: profile.preferences.emailNotification,
       soundEffect: profile.preferences.soundEffect,
     },
   };
@@ -182,16 +192,15 @@ export const getLearningProfile = async (userId: string) => {
 export const updateLearningProfile = async (
   userId: string,
   data: Partial<{
-    learningGoal: string;
-    targetLevel: string;
+    learningGoal: "ielts" | "toeic" | "business" | "travel" | "general" | "other";
+    targetLevel: "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
     dailyGoal: number;
     reviewPerDay: number;
     reminderTime: string;
     timezone: string;
-    preferences: { pushNotification?: boolean; soundEffect?: boolean };
+    preferences: { pushNotification?: boolean; emailNotification?: boolean; soundEffect?: boolean };
   }>,
 ) => {
-  // Flatten preferences để $set hoạt động đúng trên sub-doc
   const updateData: Record<string, any> = {};
   if (data.learningGoal !== undefined) updateData.learningGoal = data.learningGoal;
   if (data.targetLevel !== undefined) updateData.targetLevel = data.targetLevel;
@@ -201,6 +210,9 @@ export const updateLearningProfile = async (
   if (data.timezone !== undefined) updateData.timezone = data.timezone;
   if (data.preferences?.pushNotification !== undefined) {
     updateData['preferences.pushNotification'] = data.preferences.pushNotification;
+  }
+  if (data.preferences?.emailNotification !== undefined) {
+    updateData['preferences.emailNotification'] = data.preferences.emailNotification;
   }
   if (data.preferences?.soundEffect !== undefined) {
     updateData['preferences.soundEffect'] = data.preferences.soundEffect;
@@ -213,51 +225,17 @@ export const updateLearningProfile = async (
   );
 
   return {
-    learningGoal: profile!.learningGoal,
-    targetLevel: profile!.targetLevel,
-    currentLevel: profile!.currentLevel,
-    dailyGoal: profile!.dailyGoal,
-    reviewPerDay: profile!.reviewPerDay ?? 20,
-    reminderTime: profile!.reminderTime,
-    timezone: profile!.timezone,
+    learningGoal: profile.learningGoal,
+    targetLevel: profile.targetLevel,
+    currentLevel: profile.currentLevel,
+    dailyGoal: profile.dailyGoal,
+    reviewPerDay: profile.reviewPerDay ?? 40,
+    reminderTime: profile.reminderTime,
+    timezone: profile.timezone,
     preferences: {
-      pushNotification: profile!.preferences.pushNotification,
-      soundEffect: profile!.preferences.soundEffect,
+      pushNotification: profile.preferences.pushNotification,
+      emailNotification: profile.preferences.emailNotification,
+      soundEffect: profile.preferences.soundEffect,
     },
   };
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Phase 5-B: FCM Token Management
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Đăng ký hoặc cập nhật FCM token cho thiết bị
- */
-export const registerFCMToken = async (
-  userId: string,
-  data: {
-    token: string;
-    deviceId: string;
-    platform: 'android' | 'ios' | 'web';
-  },
-) => {
-  await FCMToken.findOneAndUpdate(
-    { userId, deviceId: data.deviceId },
-    {
-      $set: {
-        token: data.token,
-        platform: data.platform,
-        lastUsedAt: new Date(),
-      },
-    },
-    { upsert: true, new: true },
-  );
-};
-
-/**
- * Xoá FCM token khi user logout hoặc huỷ thông báo
- */
-export const deleteFCMToken = async (userId: string, deviceId: string) => {
-  await FCMToken.deleteOne({ userId, deviceId });
 };

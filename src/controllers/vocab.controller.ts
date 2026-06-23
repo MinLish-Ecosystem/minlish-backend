@@ -1,7 +1,8 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response } from "express";
 import * as vocabService from "../services/vocab.service";
 import { VocabSetFilters } from "../types/vocab.types";
 import { sendSuccess } from "../utils/response.util";
+import { catchAsync } from "../utils/catchAsync";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -11,188 +12,104 @@ function parseTags(raw?: string): string[] | undefined {
   return raw.split(",").map((t) => t.trim()).filter(Boolean);
 }
 
-/** Extract common filter params từ request.query */
-function parseFilters(query: Request["query"]): VocabSetFilters {
-  return {
-    q:        query.q        as string | undefined,
-    category: query.category as any,
-    level:    query.level    as any,
-    sortBy:   query.sortBy   as any,
-    tags:     parseTags(query.tags as string),
-    page:     query.page  ? Number(query.page)  : 1,
-    limit:    query.limit ? Number(query.limit) : 12,
-    includeProgress: query.includeProgress === "true",
-  };
-}
-
 // ─── Vocabulary Set Controllers ──────────────────────────────────────────────
 
 /**
  * GET /api/v1/vocab/sets
  * My Library — Danh sách bộ từ của user hiện tại (với search/filter/pagination)
- *
- * TODO (Người 1): Gọi vocabService.getUserSets và trả về response
  */
-export async function getUserSetsController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const userId  = req.user!.id;
-    const filters = parseFilters(req.query);
-    const result  = await vocabService.getUserSets(userId, filters);
-    sendSuccess(res, "Sets fetched", result);
-  } catch (err) {
-    next(err);
-  }
-}
+export const getUserSetsController = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const filters: VocabSetFilters = {
+    q: req.query.q as string | undefined,
+    category: req.query.category as any,
+    level: req.query.level as any,
+    sortBy: req.query.sortBy as any,
+    tags: parseTags(req.query.tags as string),
+    page: req.query.page ? Number(req.query.page) : undefined,
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+    includeProgress: req.query.includeProgress as boolean | undefined,
+  };
+  
+  const result = await vocabService.getUserSets(userId, filters);
+  return sendSuccess(res, "Sets fetched successfully", result.data, 200, result.pagination);
+});
 
-export async function getPublicSetsController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const filters = parseFilters(req.query);
-    const result  = await vocabService.getPublicSets(filters);
-    sendSuccess(res, "Public sets fetched", result);
-  } catch (err) {
-    next(err);
-  }
-}
+export const getPublicSetsController = catchAsync(async (req: Request, res: Response) => {
+  const filters: VocabSetFilters = {
+    q: req.query.q as string | undefined,
+    category: req.query.category as any,
+    level: req.query.level as any,
+    sortBy: req.query.sortBy as any,
+    tags: parseTags(req.query.tags as string),
+    page: req.query.page ? Number(req.query.page) : undefined,
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+    includeProgress: req.query.includeProgress as boolean | undefined,
+  };
 
-export async function getSetDetailController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const { id }  = req.params;
-    const userId  = req.user?.id;
-    const set     = await vocabService.getSetById(id, userId);
-    sendSuccess(res, "Set detail", set);
-  } catch (err) {
-    next(err);
-  }
-}
+  const result = await vocabService.getPublicSets(filters);
+  return sendSuccess(res, "Public sets fetched successfully", result.data, 200, result.pagination);
+});
 
-export async function createSetController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const userId = req.user!.id;
-    const set    = await vocabService.createSet(userId, req.body);
-    sendSuccess(res, "Set created", set, 201);
-  } catch (err) {
-    next(err);
-  }
-}
+export const getSetDetailController = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userId = req.user?.id;
+  const set = await vocabService.getSetById(id, userId);
+  return sendSuccess(res, "Set details fetched successfully", set);
+});
 
-export async function updateSetController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-    const set    = await vocabService.updateSet(id, userId, req.body);
-    sendSuccess(res, "Set updated", set);
-  } catch (err) {
-    next(err);
-  }
-}
+export const createSetController = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const set = await vocabService.createSet(userId, req.body);
+  return sendSuccess(res, "Vocabulary set created successfully", set, 201);
+});
 
-export async function deleteSetController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-    await vocabService.deleteSet(id, userId);
-    sendSuccess(res, "Set deleted", null);
-  } catch (err) {
-    next(err);
-  }
-}
+export const updateSetController = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userId = req.user!.id;
+  const set = await vocabService.updateSet(id, userId, req.body);
+  return sendSuccess(res, "Vocabulary set updated successfully", set);
+});
 
-export async function clonePublicSetController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-    const set    = await vocabService.clonePublicSet(id, userId);
-    sendSuccess(res, "Set added to your library", set, 201);
-  } catch (err) {
-    next(err);
-  }
-}
+export const deleteSetController = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userId = req.user!.id;
+  await vocabService.deleteSet(id, userId);
+  return sendSuccess(res, "Vocabulary set deleted successfully");
+});
 
-export async function getWordsController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const { id }  = req.params;
-    const userId  = req.user?.id;
-    const q       = req.query.q as string | undefined;
-    const words   = await vocabService.getWords(id, userId, q);
-    sendSuccess(res, "Words fetched", words);
-  } catch (err) {
-    next(err);
-  }
-}
+export const clonePublicSetController = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userId = req.user!.id;
+  const set = await vocabService.clonePublicSet(id, userId);
+  return sendSuccess(res, "Set cloned to library successfully", set, 201);
+});
 
-export async function addWordController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-    const word   = await vocabService.addWord(id, userId, req.body);
-    sendSuccess(res, "Word added", word, 201);
-  } catch (err) {
-    next(err);
-  }
-}
+export const getWordsController = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userId = req.user?.id;
+  const q = req.query.q as string | undefined;
+  const words = await vocabService.getWords(id, userId, q);
+  return sendSuccess(res, "Words fetched successfully", words);
+});
 
-export async function updateWordController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const { id, wordId } = req.params;
-    const userId         = req.user!.id;
-    const word           = await vocabService.updateWord(wordId, id, userId, req.body);
-    sendSuccess(res, "Word updated", word);
-  } catch (err) {
-    next(err);
-  }
-}
+export const addWordController = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userId = req.user!.id;
+  const word = await vocabService.addWord(id, userId, req.body);
+  return sendSuccess(res, "Word added successfully", word, 201);
+});
 
-export async function deleteWordController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const { id, wordId } = req.params;
-    const userId         = req.user!.id;
-    await vocabService.deleteWord(wordId, id, userId);
-    sendSuccess(res, "Word deleted", null);
-  } catch (err) {
-    next(err);
-  }
-}
+export const updateWordController = catchAsync(async (req: Request, res: Response) => {
+  const { id, wordId } = req.params;
+  const userId = req.user!.id;
+  const word = await vocabService.updateWord(wordId, id, userId, req.body);
+  return sendSuccess(res, "Word updated successfully", word);
+});
+
+export const deleteWordController = catchAsync(async (req: Request, res: Response) => {
+  const { id, wordId } = req.params;
+  const userId = req.user!.id;
+  await vocabService.deleteWord(wordId, id, userId);
+  return sendSuccess(res, "Word deleted successfully");
+});

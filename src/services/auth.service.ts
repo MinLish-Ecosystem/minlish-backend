@@ -140,7 +140,7 @@ export const refreshTokenService = async (refreshToken: string) => {
     );
   }
 
-  // Rotate refresh token: tạo cặp token mới và thay refresh token trong DB
+  // Tạo Access Token mới và Refresh Token mới (RTR)
   const newPayload: TokenPayload = {
     userId: (user._id as any).toString(),
     email: user.email,
@@ -149,10 +149,14 @@ export const refreshTokenService = async (refreshToken: string) => {
   const newAccessToken = signAccessToken(newPayload);
   const newRefreshToken = signRefreshToken(newPayload);
 
+  // Cập nhật Refresh Token mới vào cơ sở dữ liệu
   user.refreshToken = newRefreshToken;
   await user.save();
 
-  return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+  return { 
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken
+  };
 };
 
 /**

@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { verifyToken, requireAdmin } from '../middlewares/auth.middleware';
-import { body, param, query } from 'express-validator';
-import { validate } from '../middlewares/validate.middleware';
+import { validateZod } from '../middlewares/validate.middleware';
+import {
+  banUserSchema,
+  unpublishSetSchema,
+  adminPaginationSchema,
+  adminIdParamSchema,
+} from '../validators/admin.schema';
 import {
 	listUsersController,
 	getUserDetailController,
@@ -11,8 +16,8 @@ import {
 	getAdminStatsController,
 	listPublicSetsController,
 	unpublishSetController,
-	getAuditLogsController,
 	getReportsController,
+	getAuditLogsController,
 } from '../controllers/admin.controller';
 
 /**
@@ -77,15 +82,7 @@ router.use(verifyToken, requireAdmin);
  *       403:
  *         description: Không có quyền Admin
  */
-router.get(
-  '/users',
-  [
-    query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-  ],
-  validate,
-  listUsersController,
-);
+router.get('/users', validateZod(adminPaginationSchema), listUsersController);
 
 /**
  * @swagger
@@ -110,12 +107,7 @@ router.get(
  *       404:
  *         description: Không tìm thấy user
  */
-router.get(
-  '/users/:id',
-  [param('id').isMongoId().withMessage('Invalid user id')],
-  validate,
-  getUserDetailController,
-);
+router.get('/users/:id', validateZod(adminIdParamSchema), getUserDetailController);
 
 /**
  * @swagger
@@ -153,15 +145,7 @@ router.get(
  *       404:
  *         description: Không tìm thấy user
  */
-router.put(
-  '/users/:id/ban',
-  [
-    param('id').isMongoId().withMessage('Invalid user id'),
-    body('reason').notEmpty().withMessage('reason is required'),
-  ],
-  validate,
-  banUserController,
-);
+router.put('/users/:id/ban', validateZod(banUserSchema), banUserController);
 
 /**
  * @swagger
@@ -185,19 +169,14 @@ router.put(
  *       404:
  *         description: Không tìm thấy user
  */
-router.put(
-  '/users/:id/unban',
-  [param('id').isMongoId().withMessage('Invalid user id')],
-  validate,
-  unbanUserController,
-);
+router.put('/users/:id/unban', validateZod(adminIdParamSchema), unbanUserController);
 
 /**
  * @swagger
  * /api/v1/admin/users/{id}:
  *   delete:
  *     summary: Xóa vĩnh viễn tài khoản người dùng
- *     description: Hard delete user + xóa toàn bộ dữ liệu cá nhân (LearningProgress, DailyStats, FCMToken...). Soft delete các bộ từ để bảo toàn dữ liệu công khai.
+ *     description: Hard delete user + xóa toàn bộ dữ liệu cá nhân (LearningProgress, DailyStats...). Soft delete các bộ từ để bảo toàn dữ liệu công khai.
  *     tags: [Admin]
  *     security:
  *       - BearerAuth: []
@@ -215,12 +194,7 @@ router.put(
  *       404:
  *         description: Không tìm thấy user
  */
-router.delete(
-  '/users/:id',
-  [param('id').isMongoId().withMessage('Invalid user id')],
-  validate,
-  deleteUserController,
-);
+router.delete('/users/:id', validateZod(adminIdParamSchema), deleteUserController);
 
 /**
  * @swagger
@@ -248,7 +222,6 @@ router.delete(
  *                     totalSets: { type: number, example: 3400 }
  */
 router.get('/stats', getAdminStatsController);
-
 /**
  * @swagger
  * /api/v1/admin/sets:
@@ -272,15 +245,7 @@ router.get('/stats', getAdminStatsController);
  *       200:
  *         description: Danh sách bộ từ công khai
  */
-router.get(
-  '/sets',
-  [
-    query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-  ],
-  validate,
-  listPublicSetsController,
-);
+router.get('/sets', validateZod(adminPaginationSchema), listPublicSetsController);
 
 /**
  * @swagger
@@ -314,15 +279,7 @@ router.get(
  *       404:
  *         description: Không tìm thấy bộ từ
  */
-router.put(
-  '/sets/:id/unpublish',
-  [
-    param('id').isMongoId().withMessage('Invalid set id'),
-    body('reason').optional().isString(),
-  ],
-  validate,
-  unpublishSetController,
-);
+router.put('/sets/:id/unpublish', validateZod(unpublishSetSchema), unpublishSetController);
 
 /**
  * @swagger
@@ -389,14 +346,6 @@ router.get('/reports', getReportsController);
  *                     pagination:
  *                       type: object
  */
-router.get(
-  '/audit-logs',
-  [
-    query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-  ],
-  validate,
-  getAuditLogsController,
-);
+router.get('/audit-logs', validateZod(adminPaginationSchema), getAuditLogsController);
 
 export default router;

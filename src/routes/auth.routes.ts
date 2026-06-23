@@ -11,15 +11,15 @@ import {
   resetPassword,
 } from "../controllers/password.controller";
 import {
-  loginValidator,
-  registerValidator,
-  verifyEmailValidator,
-  forgotPasswordValidator,
-  resetPasswordValidator,
-} from "../validators/auth.validator";
-import { validate } from "../middlewares/validate.middleware";
-import { verifyToken } from "../middlewares/auth.middleware";
-import { authLimiter } from "../middlewares/rateLimiter";
+  loginSchema,
+  registerSchema,
+  verifyEmailSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from '../validators/auth.schema';
+import { validateZod } from '../middlewares/validate.middleware';
+import { verifyToken } from '../middlewares/auth.middleware';
+import { authLimiter } from '../middlewares/rateLimiter';
 
 /**
  * @swagger
@@ -79,7 +79,7 @@ const router = Router();
  *       429:
  *         description: Gửi quá nhiều request — rate limit
  */
-router.post("/register", authLimiter, registerValidator, validate, register);
+router.post('/register', authLimiter, validateZod(registerSchema), register);
 
 /**
  * @swagger
@@ -115,13 +115,7 @@ router.post("/register", authLimiter, registerValidator, validate, register);
  *       429:
  *         description: Rate limit
  */
-router.post(
-  "/verify-email",
-  authLimiter,
-  verifyEmailValidator,
-  validate,
-  verifyEmail,
-);
+router.post('/verify-email', authLimiter, validateZod(verifyEmailSchema), verifyEmail);
 
 /**
  * @swagger
@@ -175,7 +169,7 @@ router.post(
  *       429:
  *         description: Rate limit
  */
-router.post("/login", authLimiter, loginValidator, validate, login);
+router.post('/login', authLimiter, validateZod(loginSchema), login);
 
 /**
  * @swagger
@@ -257,13 +251,7 @@ router.post("/logout", verifyToken, logout);
  *       429:
  *         description: Rate limit
  */
-router.post(
-  "/forgot-password",
-  authLimiter,
-  forgotPasswordValidator,
-  validate,
-  forgotPassword,
-);
+router.post('/forgot-password', authLimiter, validateZod(forgotPasswordSchema), forgotPassword);
 
 /**
  * @swagger
@@ -303,12 +291,6 @@ router.post(
  *       429:
  *         description: Rate limit
  */
-router.post(
-  "/reset-password",
-  authLimiter,
-  resetPasswordValidator,
-  validate,
-  resetPassword,
-);
+router.post('/reset-password', authLimiter, validateZod(resetPasswordSchema), resetPassword);
 
 export default router;

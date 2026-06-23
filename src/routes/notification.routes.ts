@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { query, param } from 'express-validator';
-import { validate } from '../middlewares/validate.middleware';
+import { validateZod } from '../middlewares/validate.middleware';
+import { getNotificationsSchema, notificationIdParamSchema } from '../validators/notification.schema';
 import { verifyToken } from '../middlewares/auth.middleware';
 import {
   getNotificationsController,
@@ -83,12 +83,7 @@ const router = Router();
 router.get(
   '/',
   verifyToken,
-  [
-    query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-    query('type').optional().isString(),
-  ],
-  validate,
+  validateZod(getNotificationsSchema),
   getNotificationsController,
 );
 
@@ -176,8 +171,7 @@ router.put('/read-all', verifyToken, markAllReadController);
 router.put(
   '/:id/read',
   verifyToken,
-  [param('id').isMongoId().withMessage('Invalid notification id')],
-  validate,
+  validateZod(notificationIdParamSchema),
   markReadController,
 );
 
@@ -215,8 +209,7 @@ router.put(
 router.delete(
   '/:id',
   verifyToken,
-  [param('id').isMongoId().withMessage('Invalid notification id')],
-  validate,
+  validateZod(notificationIdParamSchema),
   deleteNotificationController,
 );
 

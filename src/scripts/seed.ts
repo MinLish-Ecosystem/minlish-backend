@@ -22,6 +22,8 @@ import { Word } from '../models/Word';
 import { LearningProgress } from '../models/LearningProgress';
 import { DailyStats } from '../models/DailyStats';
 import { Notification } from '../models/Nofitication';
+import { Post } from '../models/Post';
+import { Comment } from '../models/Comment';
 
 // ─── Audio URL helper (Google TTS — không cần key) ────────────────────────────
 const tts = (word: string) =>
@@ -875,7 +877,10 @@ async function seed() {
     // BƯỚC 4: LEARNING PROGRESS cho demo user
     // ──────────────────────────────────────────────────────────────────────────
     console.log('\n🎯 Bước 4: Tạo LearningProgress cho demo user...');
-    const demoUser = await User.findOne({ email: 'user@minlish.com' }).lean();
+    let demoUser = await User.findOne({ email: 'user@minlish.com' }).lean();
+    if (!demoUser && adminUser) {
+      demoUser = await User.findOne({ email: { $ne: adminUser.email } }).lean();
+    }
 
     if (demoUser) {
       const allWords = await Word.find({
@@ -1026,6 +1031,88 @@ async function seed() {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // BƯỚC 7: TẠO POSTS + COMMENTS MẪU
+    // ──────────────────────────────────────────────────────────────────────────
+    console.log('\n💬 Bước 7: Tạo các bài viết Community và Bình luận mẫu...');
+    if (adminUser && demoUser) {
+      // Xóa posts/comments cũ
+      await Post.deleteMany({});
+      await Comment.deleteMany({});
+
+      const samplePosts = [
+        {
+          title: 'Mastering the Speaking Section: Advanced Fluency Techniques for Band 8+',
+          content: 'Achieving top marks in the IELTS speaking test requires more than just good vocabulary. It demands natural intonation, structural coherence, and the ability to pivot gracefully when you lose your train of thought. Let\'s break down three strategies:\n\n1. **Use Signposting Words**: Guide the examiner through your thoughts with transition signals.\n2. **Embrace Natural Pauses**: Do not fill every silence with "umm" or "err". Practice brief silent pauses to gather thoughts.\n3. **Build a Range of Idioms**: Naturally slip in idioms without making them sound forced.',
+          excerpt: 'Achieving top marks in the IELTS speaking test requires more than just good vocabulary. It demands natural intonation, structural coherence, and the ability to pivot gracefully...',
+          category: 'IELTS Prep',
+          difficulty: 'Advanced',
+          readingTime: 6,
+          author: adminUser._id,
+          isFeatured: true,
+          likes: [demoUser._id],
+          bookmarks: [demoUser._id]
+        },
+        {
+          title: '10 Email Sign-offs Better Than "Best Regards"',
+          content: 'Are you still ending every professional email with "Best"? It\'s time to diversify your corporate communication toolkit. Here are culturally nuanced alternatives for different contexts:\n\n* **For urgent requests**: "Thanks in advance for your help" or "Appreciative of your time".\n* **For collaborative follow-ups**: "Looking forward to working together" or "Excited to collaborate".\n* **For warm/casual relationships**: "Warmly" or "Best wishes".',
+          excerpt: 'Are you still ending every professional email with "Best"? It\'s time to diversify your corporate communication toolkit. Here are culturally nuanced alternatives for different contexts.',
+          category: 'Business English',
+          difficulty: 'Intermediate',
+          readingTime: 4,
+          author: adminUser._id,
+          isFeatured: false,
+          likes: [],
+          bookmarks: []
+        },
+        {
+          title: 'Navigating Tokyo Transit: Essential Vocabulary',
+          content: 'Lost in Shinjuku station? These key phrases saved my trip. Learn words like:\n\n* **Eki** (Station)\n* **Kippu** (Ticket)\n* **Sumimasen, eki wa doko desu ka?** (Excuse me, where is the station?)\n* **Kore wa Tokyo-yuki desu ka?** (Is this train bound for Tokyo?)',
+          excerpt: 'Lost in Shinjuku station? These key phrases saved my trip. Essential vocabulary for train travel...',
+          category: 'Cultural Tips',
+          difficulty: 'Beginner',
+          readingTime: 3,
+          author: demoUser._id,
+          isFeatured: false,
+          likes: [adminUser._id],
+          bookmarks: []
+        },
+        {
+          title: 'The Subjunctive Mood Doesn\'t Have to Be Scary',
+          content: 'If I were you, I\'d read this article. See what I did there? Let\'s demystify one of the most misunderstood grammatical structures in English. The subjunctive mood is used to express wishes, hypothetical situations, or demands. For example, "It is crucial that he **be** on time" instead of "he is on time".',
+          excerpt: 'If I were you, I\'d read this article. See what I did there? Let\'s demystify one of the most misunderstood grammatical structures in English.',
+          category: 'Grammar',
+          difficulty: 'Advanced',
+          readingTime: 5,
+          author: adminUser._id,
+          isFeatured: false,
+          likes: [demoUser._id],
+          bookmarks: [demoUser._id]
+        }
+      ];
+
+      const createdPosts = await Post.insertMany(samplePosts);
+      console.log(`   ✓ Đã tạo ${createdPosts.length} bài viết mẫu`);
+
+      // Thêm bình luận mẫu cho bài viết đầu tiên
+      if (createdPosts.length > 0) {
+        const sampleComments = [
+          {
+            content: 'Bài viết rất bổ ích! Những từ dẫn đường (signposting words) đã cứu cánh cho mình trong phòng thi speaking.',
+            author: demoUser._id,
+            post: createdPosts[0]._id
+          },
+          {
+            content: 'Cảm ơn Elena! Rất hy vọng sẽ có thêm bài viết chi tiết về cách dùng thành ngữ (idioms) tự nhiên.',
+            author: adminUser._id,
+            post: createdPosts[0]._id
+          }
+        ];
+        await Comment.insertMany(sampleComments);
+        console.log(`   ✓ Đã tạo ${sampleComments.length} bình luận mẫu cho bài viết đầu tiên`);
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // TỔNG KẾT
     // ──────────────────────────────────────────────────────────────────────────
     const finalSets  = await VocabularySet.countDocuments({ isDeleted: { $ne: true } });
@@ -1033,6 +1120,8 @@ async function seed() {
     const finalProg  = await LearningProgress.countDocuments();
     const finalStats = await DailyStats.countDocuments();
     const finalNotif = await Notification.countDocuments();
+    const finalPosts = await Post.countDocuments();
+    const finalComments = await Comment.countDocuments();
 
     console.log('\n' + '═'.repeat(55));
     console.log('✅ Seed hoàn tất!\n');
@@ -1041,6 +1130,8 @@ async function seed() {
     console.log('   LearningProgress  :', finalProg);
     console.log('   DailyStats        :', finalStats);
     console.log('   Notifications     :', finalNotif);
+    console.log('   Posts             :', finalPosts);
+    console.log('   Comments          :', finalComments);
     console.log('\n📱 API test ngay:');
     console.log('   Login : POST /api/v1/auth/login');
     console.log('   Email : user@minlish.com | Pass: User@123');

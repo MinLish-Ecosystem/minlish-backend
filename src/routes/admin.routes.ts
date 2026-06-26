@@ -18,6 +18,12 @@ import {
 	unpublishSetController,
 	getReportsController,
 	getAuditLogsController,
+	getSystemConfigController,
+	updateSystemConfigController,
+	getPendingModerationSetsController,
+	getModerationLogsController,
+	overrideModerationController,
+	runAutoModerationController,
 } from '../controllers/admin.controller';
 
 /**
@@ -347,5 +353,15 @@ router.get('/reports', getReportsController);
  *                       type: object
  */
 router.get('/audit-logs', validateZod(adminPaginationSchema), getAuditLogsController);
+
+// System Configuration
+router.get('/config', getSystemConfigController);
+router.put('/config', updateSystemConfigController);
+
+// Moderation
+router.get('/moderation/pending', getPendingModerationSetsController);
+router.get('/moderation/logs', getModerationLogsController);
+router.put('/moderation/override', overrideModerationController);
+router.post('/moderation/run', runAutoModerationController);
 
 export default router;

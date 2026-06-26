@@ -32,6 +32,20 @@ export async function getDueSummary(userId: string): Promise<DueSummaryResponse>
   const dailyGoal = profile?.dailyGoal ?? 10;
   const reviewPerDay = (profile as any)?.reviewPerDay ?? 20;
 
+  // Đọc thống kê hôm nay để trừ đi phần đã học/ôn
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const todayStats = await DailyStats.findOne({
+    userId: userObjectId,
+    date: { $gte: todayMidnight }
+  }).lean();
+
+  const learnedToday = todayStats?.newWordsLearned ?? 0;
+  const reviewedToday = todayStats?.wordsReviewed ?? 0;
+
+  const remainingNewGoal = Math.max(0, dailyGoal - learnedToday);
+  const remainingReviewGoal = Math.max(0, reviewPerDay - reviewedToday);
+
   // 1. Đếm từ cần ôn tập đến hạn
   const dueReviewsCount = await LearningProgress.countDocuments({
     userId: userObjectId,
@@ -73,13 +87,15 @@ export async function getDueSummary(userId: string): Promise<DueSummaryResponse>
   const rawNewWordsCount = newWordsCountResult[0]?.count ?? 0;
 
   // Áp dụng giới hạn hàng ngày để ra badge thực tế hiển thị
-  const actualNew = Math.min(dailyGoal, rawNewWordsCount);
-  const actualReview = Math.min(reviewPerDay, dueReviewsCount);
+  const actualNew = Math.min(remainingNewGoal, rawNewWordsCount);
+  const actualReview = Math.min(remainingReviewGoal, dueReviewsCount);
 
   return {
     newWordsCount: actualNew,
     dueReviewsCount: actualReview,
-    totalDueCount: actualNew + actualReview
+    totalDueCount: actualNew + actualReview,
+    rawNewWordsCount,
+    rawDueReviewsCount: dueReviewsCount
   };
 }
 
@@ -99,6 +115,20 @@ export async function getLearningQueue(
   const dailyGoal = profile?.dailyGoal ?? 10;
   const reviewPerDay = (profile as any)?.reviewPerDay ?? 20;
 
+  // Đọc thống kê hôm nay để trừ đi phần đã học/ôn
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const todayStats = await DailyStats.findOne({
+    userId: userObjectId,
+    date: { $gte: todayMidnight }
+  }).lean();
+
+  const learnedToday = todayStats?.newWordsLearned ?? 0;
+  const reviewedToday = todayStats?.wordsReviewed ?? 0;
+
+  const remainingNewGoal = Math.max(0, dailyGoal - learnedToday);
+  const remainingReviewGoal = Math.max(0, reviewPerDay - reviewedToday);
+
   // Lấy các SetId trong thư viện để chỉ học các từ thuộc thư viện cá nhân
   const userSetIds = await VocabularySet.find({
     userId: userObjectId,
@@ -106,44 +136,47 @@ export async function getLearningQueue(
   }).distinct("_id");
 
   // ─── PHẦN 1: QUÂN BÀI CẦN ÔN (REVIEW CARDS) ───
-  const reviewProgress = await LearningProgress.find({
-    userId: userObjectId,
-    setId: { $in: userSetIds },
-    status: { $ne: "new" },
-    nextReviewDate: { $lte: now }
-  })
-    .sort({ nextReviewDate: 1 })
-    .limit(reviewPerDay)
-    .populate("wordId")
-    .populate("setId", "name colorTheme")
-    .lean();
+  const reviewProgress = remainingReviewGoal > 0
+    ? await LearningProgress.find({
+        userId: userObjectId,
+        setId: { $in: userSetIds },
+        status: { $ne: "new" },
+        nextReviewDate: { $lte: now }
+      })
+        .sort({ nextReviewDate: 1 })
+        .limit(remainingReviewGoal)
+        .populate("wordId")
+        .populate("setId", "name colorTheme")
+        .lean()
+    : [];
 
   // ─── PHẦN 2: QUÂN BÀI MỚI (NEW CARDS) ───
-  // Dùng $lookup loại trừ tiến trình đã học, cực kỳ nhanh chóng và an toàn hiệu năng
-  const newWords = await Word.aggregate([
-    { $match: { setId: { $in: userSetIds }, isDeleted: { $ne: true } } },
-    {
-      $lookup: {
-        from: "learningprogresses",
-        let: { wordId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$wordId", "$$wordId"] },
-                  { $eq: ["$userId", userObjectId] }
-                ]
+  const newWords = remainingNewGoal > 0
+    ? await Word.aggregate([
+        { $match: { setId: { $in: userSetIds }, isDeleted: { $ne: true } } },
+        {
+          $lookup: {
+            from: "learningprogresses",
+            let: { wordId: "$_id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ["$wordId", "$$wordId"] },
+                      { $eq: ["$userId", userObjectId] }
+                    ]
+                  }
+                }
               }
-            }
+            ],
+            as: "progress"
           }
-        ],
-        as: "progress"
-      }
-    },
-    { $match: { "progress.0": { $exists: false } } }, // Chỉ lấy từ chưa học
-    { $limit: dailyGoal }
-  ]);
+        },
+        { $match: { "progress.0": { $exists: false } } }, // Chỉ lấy từ chưa học
+        { $limit: remainingNewGoal }
+      ])
+    : [];
 
   const summary: QueueSummary = {
     newCount: newWords.length,
@@ -335,43 +368,61 @@ export async function getSetLearningQueue(
   const dailyGoal = profile?.dailyGoal ?? 10;
   const reviewPerDay = (profile as any)?.reviewPerDay ?? 20;
 
-  // ─── REVIEW CARDS TRONG SET ───
-  const reviewProgress = await LearningProgress.find({
+  // Đọc thống kê hôm nay để trừ đi phần đã học/ôn
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const todayStats = await DailyStats.findOne({
     userId: userObjectId,
-    setId: setObjectId,
-    status: { $ne: "new" },
-    nextReviewDate: { $lte: now }
-  })
-    .sort({ nextReviewDate: 1 })
-    .limit(reviewPerDay)
-    .populate("wordId")
-    .lean();
+    date: { $gte: todayMidnight }
+  }).lean();
+
+  const learnedToday = todayStats?.newWordsLearned ?? 0;
+  const reviewedToday = todayStats?.wordsReviewed ?? 0;
+
+  const remainingNewGoal = Math.max(0, dailyGoal - learnedToday);
+  const remainingReviewGoal = Math.max(0, reviewPerDay - reviewedToday);
+
+  // ─── REVIEW CARDS TRONG SET ───
+  const reviewProgress = remainingReviewGoal > 0
+    ? await LearningProgress.find({
+        userId: userObjectId,
+        setId: setObjectId,
+        status: { $ne: "new" },
+        nextReviewDate: { $lte: now }
+      })
+        .sort({ nextReviewDate: 1 })
+        .limit(remainingReviewGoal)
+        .populate("wordId")
+        .lean()
+    : [];
 
   // ─── NEW CARDS TRONG SET ───
-  const newWords = await Word.aggregate([
-    { $match: { setId: setObjectId, isDeleted: { $ne: true } } },
-    {
-      $lookup: {
-        from: "learningprogresses",
-        let: { wordId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$wordId", "$$wordId"] },
-                  { $eq: ["$userId", userObjectId] }
-                ]
+  const newWords = remainingNewGoal > 0
+    ? await Word.aggregate([
+        { $match: { setId: setObjectId, isDeleted: { $ne: true } } },
+        {
+          $lookup: {
+            from: "learningprogresses",
+            let: { wordId: "$_id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ["$wordId", "$$wordId"] },
+                      { $eq: ["$userId", userObjectId] }
+                    ]
+                  }
+                }
               }
-            }
+            ],
+            as: "progress"
           }
-        ],
-        as: "progress"
-      }
-    },
-    { $match: { "progress.0": { $exists: false } } },
-    { $limit: dailyGoal }
-  ]);
+        },
+        { $match: { "progress.0": { $exists: false } } },
+        { $limit: remainingNewGoal }
+      ])
+    : [];
 
   const summary: QueueSummary = {
     newCount: newWords.length,

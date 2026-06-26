@@ -5,6 +5,11 @@ import * as adminService from '../services/admin.service';
 import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
+import { getOrCreateSystemConfig, SystemConfig } from '../models/SystemConfig';
+import { runAutoModerationBatch, manualOverrideModeration } from '../services/moderation.service';
+import { rescheduleModerationJob } from '../services/moderation.worker';
+import { VocabularySet } from '../models/VocabularySet';
+import { ModerationLog } from '../models/ModerationLog';
 
 /**
  * @swagger
@@ -279,4 +284,81 @@ export const getReportsController = catchAsync(async (_req: Request, res: Respon
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="users_report.csv"');
   res.status(200).send(csv);
+});
+
+// ─── System Configuration Controllers ─────────────────────────────────────────
+
+export const getSystemConfigController = catchAsync(async (_req: Request, res: Response) => {
+  const config = await getOrCreateSystemConfig();
+  return sendSuccess(res, 'System configuration fetched successfully', config);
+});
+
+export const updateSystemConfigController = catchAsync(async (req: Request, res: Response) => {
+  let config = await SystemConfig.findOne();
+  if (!config) {
+    config = await SystemConfig.create({});
+  }
+
+  const oldInterval = config.moderationInterval;
+  
+  // Cập nhật cấu hình
+  config.set(req.body);
+  await config.save();
+
+  // Nếu tần suất kiểm duyệt thay đổi, lên lịch lại background job
+  if (req.body.moderationInterval !== undefined && req.body.moderationInterval !== oldInterval) {
+    await rescheduleModerationJob(config.moderationInterval);
+  }
+
+  return sendSuccess(res, 'System configuration updated successfully', config);
+});
+
+// ─── Content Moderation Controllers ───────────────────────────────────────────
+
+export const getPendingModerationSetsController = catchAsync(async (_req: Request, res: Response) => {
+  const pendingSets = await VocabularySet.find({
+    isPublic: true,
+    moderationStatus: 'pending',
+    isDeleted: { $ne: true }
+  }).populate('userId', 'name email').sort({ createdAt: -1 }).lean();
+
+  return sendSuccess(res, 'Pending sets fetched successfully', pendingSets);
+});
+
+export const getModerationLogsController = catchAsync(async (req: Request, res: Response) => {
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const skip = (page - 1) * limit;
+
+  const [logs, total] = await Promise.all([
+    ModerationLog.find().sort({ runAt: -1 }).skip(skip).limit(limit).lean(),
+    ModerationLog.countDocuments()
+  ]);
+
+  return sendSuccess(res, 'Moderation logs fetched successfully', logs, 200, {
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit)
+  });
+});
+
+export const overrideModerationController = catchAsync(async (req: Request, res: Response) => {
+  const adminId = (req.user?._id as any)?.toString();
+  const { setId, status, reason } = req.body;
+
+  if (!setId || !status || !reason) {
+    throw new AppError('setId, status, and reason are required', HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  await manualOverrideModeration(adminId, setId, status, reason);
+  return sendSuccess(res, `Set moderation status updated to ${status} successfully`);
+});
+
+export const runAutoModerationController = catchAsync(async (req: Request, res: Response) => {
+  const adminId = (req.user?._id as any)?.toString();
+  console.log(`[Admin] Manual moderation run triggered by admin ${adminId}`);
+  
+  const stats = await runAutoModerationBatch(adminId);
+  return sendSuccess(res, 'Auto-moderation batch run completed successfully', stats);
 });

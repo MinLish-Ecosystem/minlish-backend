@@ -5,12 +5,12 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // Set DNS tường minh — giống hệt pattern đã hoạt động trong project cũ
-try {
-  dns.setServers(["1.1.1.1", "8.8.8.8"]);
-  console.log("✓ Custom DNS servers set successfully.");
-} catch (err: any) {
-  console.error("⚠ Could not set custom DNS servers:", err.message);
-}
+// try {
+//   dns.setServers(["1.1.1.1", "8.8.8.8"]);
+//   console.log("✓ Custom DNS servers set successfully.");
+// } catch (err: any) {
+//   console.error("⚠ Could not set custom DNS servers:", err.message);
+// }
 
 /**
  * Kết nối MongoDB

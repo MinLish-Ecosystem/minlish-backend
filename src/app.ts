@@ -6,6 +6,7 @@ import compression from 'compression';
 import { setupSwagger } from './config/swagger';
 import router from './routes/index';
 import { errorHandler } from './middlewares/error.middleware';
+import { checkMaintenanceMode } from './middlewares/maintenance.middleware';
 
 dotenv.config();
 
@@ -42,6 +43,7 @@ app.use(express.urlencoded({ extended: true }));
 setupSwagger(app);
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
+app.use(checkMaintenanceMode);
 app.use('/api/v1', router);
 
 // ─── Health check ────────────────────────────────────────────────────────────

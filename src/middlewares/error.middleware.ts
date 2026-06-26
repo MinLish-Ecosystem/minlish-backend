@@ -28,8 +28,13 @@ export const errorHandler = (
   // 2. Xử lý lỗi từ MongoDB / Mongoose
   // Lỗi Duplicate Key (ví dụ: email đã tồn tại)
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
-    const message = `${field} already exists. Please use another value.`;
+    let message = "";
+    if (err.keyValue && err.keyValue.setId && err.keyValue.word !== undefined) {
+      message = `Word "${err.keyValue.word}" already exists in this vocabulary set.`;
+    } else {
+      const field = Object.keys(err.keyValue)[0];
+      message = `${field} already exists. Please use another value.`;
+    }
     sendError(res, message, 409, ErrorCodes.VALIDATION_FAILED);
     return;
   }

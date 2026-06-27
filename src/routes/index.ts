@@ -7,6 +7,8 @@ import notificationRoutes from './notification.routes';
 import learningRoutes from './learning.routes';
 import syncRoutes from './sync.routes';
 import statsRoutes from './stats.routes';
+import practiceRoutes from './practice.routes';
+import postRoutes from './post.routes';
 
 /**
  * Router gốc — Mount tất cả sub-routers vào đây
@@ -34,6 +36,7 @@ router.use('/learning', learningRoutes);
 router.use('/sync', syncRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/stats', statsRoutes);
+router.use('/practice', practiceRoutes);
+router.use('/posts', postRoutes);
 
 export default router;
-

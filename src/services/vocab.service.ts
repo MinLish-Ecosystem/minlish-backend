@@ -24,9 +24,16 @@ import {
 function buildSetFilter(filters: VocabSetFilters, extraMatch: Record<string, unknown> = {}) {
   const match: Record<string, unknown> = { ...extraMatch };
 
-  // Full-text search trên name, description, tags (dùng text index)
+  // Tìm kiếm thông minh dựa trên tên, mô tả và nhãn (hỗ trợ substring regex khớp từng phần)
   if (filters.q) {
-    match.$text = { $search: filters.q };
+    const cleanQ = filters.q.trim();
+    if (cleanQ) {
+      match.$or = [
+        { name: { $regex: cleanQ, $options: "i" } },
+        { description: { $regex: cleanQ, $options: "i" } },
+        { tags: { $in: [new RegExp(cleanQ, "i")] } }
+      ];
+    }
   }
 
   if (filters.category) match.category = filters.category;
@@ -252,7 +259,7 @@ export async function getPublicSets(
 ): Promise<PaginatedResponse<VocabSetResponse>> {
   const { page = 1, limit = 12 } = filters;
   const skip = (page - 1) * limit;
-  const match = buildSetFilter(filters, { isPublic: true, isDeleted: { $ne: true } });
+  const match = buildSetFilter(filters, { isPublic: true, moderationStatus: 'approved', isDeleted: { $ne: true } });
   const sort  = buildSortOrder(filters.sortBy);
 
   const [rawSets, total] = await Promise.all([
@@ -280,6 +287,7 @@ export async function getPublicSets(
 export async function getSetById(
   setId: string,
   userId?: string,
+  isAdmin: boolean = false,
 ): Promise<VocabSetResponse> {
   if (!Types.ObjectId.isValid(setId)) {
     throw new AppError("Set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
@@ -292,7 +300,10 @@ export async function getSetById(
   }
 
   const isOwner = Boolean(userId) && set.userId.toString() === userId;
-  if (!set.isPublic && !isOwner) {
+  const isApproved = set.moderationStatus === "approved";
+  const isAccessible = set.isPublic && isApproved;
+
+  if (!isAccessible && !isOwner && !isAdmin) {
     throw new AppError("Access denied", HttpStatus.FORBIDDEN, ErrorCodes.FORBIDDEN);
   }
 
@@ -314,10 +325,13 @@ export async function createSet(
     finalCoverUrl = uploadRes.secure_url;
   }
 
+  const isPublic = Boolean(data.isPublic);
   const set = await new VocabularySet({
     userId: new Types.ObjectId(userId),
     ...data,
     coverUrl: finalCoverUrl,
+    moderationStatus: isPublic ? 'pending' : 'approved',
+    moderationReason: '',
   }).save();
 
   return mapSetToResponse(set.toObject());
@@ -352,12 +366,17 @@ export async function updateSet(
     }
   }
 
+  const willBePublic = data.isPublic !== undefined ? data.isPublic : existingSet.isPublic;
+  // Reset moderationStatus to pending if set is public or becomes public on update
+  const resetModeration = willBePublic;
+
   const set = await VocabularySet.findOneAndUpdate(
     { _id: setId, userId: new Types.ObjectId(userId), isDeleted: { $ne: true } },
     { 
       $set: {
         ...data,
-        ...(data.coverUrl !== undefined ? { coverUrl: finalCoverUrl } : {})
+        ...(data.coverUrl !== undefined ? { coverUrl: finalCoverUrl } : {}),
+        ...(resetModeration ? { moderationStatus: 'pending', moderationReason: '' } : {})
       } 
     },
     { new: true },
@@ -417,8 +436,19 @@ export async function clonePublicSet(
     isDeleted: { $ne: true },
   }).lean();
 
-  if (!sourceSet || !sourceSet.isPublic) {
+  if (!sourceSet || !sourceSet.isPublic || sourceSet.moderationStatus !== "approved") {
     throw new AppError("Public set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  // Check if already cloned
+  const existingClone = await VocabularySet.findOne({
+    userId: new Types.ObjectId(userId),
+    clonedFrom: new Types.ObjectId(sourceSetId),
+    isDeleted: { $ne: true }
+  }).lean();
+
+  if (existingClone) {
+    throw new AppError("You have already added this set to your library", HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
   }
 
   const newSet = await new VocabularySet({
@@ -466,6 +496,7 @@ export async function getWords(
   setId: string,
   userId?: string,
   q?: string,
+  isAdmin: boolean = false,
 ): Promise<WordResponse[]> {
   if (!Types.ObjectId.isValid(setId)) {
     throw new AppError("Set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
@@ -478,7 +509,10 @@ export async function getWords(
   }
 
   const isOwner = Boolean(userId) && set.userId.toString() === userId;
-  if (!set.isPublic && !isOwner) {
+  const isApproved = set.moderationStatus === "approved";
+  const isAccessible = set.isPublic && isApproved;
+
+  if (!isAccessible && !isOwner && !isAdmin) {
     throw new AppError("Forbidden", HttpStatus.FORBIDDEN, ErrorCodes.FORBIDDEN);
   }
 
@@ -527,12 +561,21 @@ export async function addWord(
   userId: string,
   data: AddWordDTO,
 ): Promise<WordResponse> {
-  await ensureOwnedSet(setId, userId);
+  const set = await ensureOwnedSet(setId, userId);
 
   let finalImageUrl = data.imageUrl;
   if (data.imageUrl && (data.imageUrl.startsWith('data:image/') || data.imageUrl.includes('base64,'))) {
     const uploadRes = await uploadImage(data.imageUrl, 'minlish_words');
     finalImageUrl = uploadRes.secure_url;
+  }
+
+  const existingWord = await Word.findOne({
+    setId: new Types.ObjectId(setId),
+    word: data.word.trim(),
+    isDeleted: { $ne: true }
+  });
+  if (existingWord) {
+    throw new AppError(`Word "${data.word.trim()}" already exists in this vocabulary set`, HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
   }
 
   const word = await new Word({
@@ -541,7 +584,11 @@ export async function addWord(
     imageUrl: finalImageUrl,
   }).save();
 
-  await VocabularySet.findByIdAndUpdate(setId, { $inc: { totalWords: 1 } });
+  const setUpdate: any = { $inc: { totalWords: 1 } };
+  if (set.isPublic) {
+    setUpdate.$set = { moderationStatus: 'pending', moderationReason: '' };
+  }
+  await VocabularySet.findByIdAndUpdate(setId, setUpdate);
 
   return mapWordToResponse(word.toObject());
 }
@@ -557,7 +604,7 @@ export async function updateWord(
   userId: string,
   data: Partial<AddWordDTO>,
 ): Promise<WordResponse> {
-  await ensureOwnedSet(setId, userId);
+  const set = await ensureOwnedSet(setId, userId);
 
   const existingWord = await Word.findOne({
     _id: wordId,
@@ -567,6 +614,18 @@ export async function updateWord(
 
   if (!existingWord) {
     throw new AppError("Word not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  if (data.word) {
+    const existingDuplicate = await Word.findOne({
+      setId: new Types.ObjectId(setId),
+      word: data.word.trim(),
+      _id: { $ne: new Types.ObjectId(wordId) },
+      isDeleted: { $ne: true }
+    });
+    if (existingDuplicate) {
+      throw new AppError(`Word "${data.word.trim()}" already exists in this vocabulary set`, HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+    }
   }
 
   let finalImageUrl = data.imageUrl;
@@ -588,6 +647,12 @@ export async function updateWord(
     { new: true },
   ).lean();
 
+  if (set.isPublic) {
+    await VocabularySet.findByIdAndUpdate(setId, {
+      $set: { moderationStatus: 'pending', moderationReason: '' }
+    });
+  }
+
   return mapWordToResponse(word);
 }
 
@@ -602,7 +667,7 @@ export async function deleteWord(
   setId: string,
   userId: string,
 ): Promise<void> {
-  await ensureOwnedSet(setId, userId);
+  const set = await ensureOwnedSet(setId, userId);
 
   const result = await Word.updateOne(
     { _id: wordId, setId: new Types.ObjectId(setId), isDeleted: { $ne: true } },
@@ -612,8 +677,13 @@ export async function deleteWord(
     throw new AppError("Word not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
   }
 
+  const setUpdate: any = { $inc: { totalWords: -1 } };
+  if (set.isPublic) {
+    setUpdate.$set = { moderationStatus: 'pending', moderationReason: '' };
+  }
+
   await Promise.all([
     LearningProgress.deleteMany({ wordId: new Types.ObjectId(wordId) }),
-    VocabularySet.findByIdAndUpdate(setId, { $inc: { totalWords: -1 } }),
+    VocabularySet.findByIdAndUpdate(setId, setUpdate),
   ]);
 }

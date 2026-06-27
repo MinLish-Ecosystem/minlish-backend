@@ -54,7 +54,7 @@ export const getPublicSetsController = catchAsync(async (req: Request, res: Resp
 export const getSetDetailController = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   const userId = req.user?.id;
-  const set = await vocabService.getSetById(id, userId);
+  const set = await vocabService.getSetById(id, userId, req.user?.role === 'admin');
   return sendSuccess(res, "Set details fetched successfully", set);
 });
 
@@ -89,7 +89,7 @@ export const getWordsController = catchAsync(async (req: Request, res: Response)
   const { id } = req.params;
   const userId = req.user?.id;
   const q = req.query.q as string | undefined;
-  const words = await vocabService.getWords(id, userId, q);
+  const words = await vocabService.getWords(id, userId, q, req.user?.role === 'admin');
   return sendSuccess(res, "Words fetched successfully", words);
 });
 

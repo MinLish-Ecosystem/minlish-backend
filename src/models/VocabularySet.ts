@@ -32,6 +32,8 @@ export interface IVocabularySet extends Document {
   colorTheme: ColorTheme;
   tags: string[];
   isPublic: boolean;
+  moderationStatus: "pending" | "approved" | "rejected";
+  moderationReason: string;
   totalWords: number;
   learnerCount: number;        // Số người đã clone bộ từ này về library
   clonedFrom?: Types.ObjectId; // Ref đến set gốc nếu đây là bản copy
@@ -85,6 +87,15 @@ const VocabularySetSchema = new Schema<IVocabularySet>(
       type: Boolean,
       default: false,
     },
+    moderationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "approved", // Mặc định là approved vì ban đầu là private, khi public mới đổi sang pending
+    },
+    moderationReason: {
+      type: String,
+      default: "",
+    },
     totalWords: {
       type: Number,
       default: 0,
@@ -118,9 +129,10 @@ const VocabularySetSchema = new Schema<IVocabularySet>(
 // Compound indexes for common queries
 VocabularySetSchema.index({ userId: 1, createdAt: -1 });
 VocabularySetSchema.index({ tags: 1 });
-VocabularySetSchema.index({ isPublic: 1, learnerCount: -1 }); // Explore: sorted by popularity
-VocabularySetSchema.index({ isPublic: 1, createdAt: -1 });    // Explore: sorted by newest
-VocabularySetSchema.index({ isPublic: 1, category: 1, level: 1 }); // Explore: filter by category+level
+VocabularySetSchema.index({ isPublic: 1, moderationStatus: 1, learnerCount: -1 }); // Explore: sorted by popularity (chỉ lấy approved)
+VocabularySetSchema.index({ isPublic: 1, moderationStatus: 1, createdAt: -1 });    // Explore: sorted by newest
+VocabularySetSchema.index({ isPublic: 1, moderationStatus: 1, category: 1, level: 1 }); // Explore: filter by category+level
+VocabularySetSchema.index({ moderationStatus: 1 }); // Lọc pending/moderated cho admin
 VocabularySetSchema.index({ userId: 1, category: 1 });         // My Library filter
 VocabularySetSchema.index({ isDeleted: 1, updatedAt: -1 });  // sync query
 VocabularySetSchema.index({ userId: 1, isDeleted: 1, createdAt: -1 });  // my library

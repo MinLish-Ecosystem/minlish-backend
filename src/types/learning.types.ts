@@ -50,6 +50,8 @@ export interface DueSummaryResponse {
   newWordsCount: number;
   dueReviewsCount: number;
   totalDueCount: number;
+  rawNewWordsCount?: number;
+  rawDueReviewsCount?: number;
 }
 
 export interface SubmitReviewDTO {

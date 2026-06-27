@@ -262,3 +262,65 @@ export const sendEmailChangeRequestEmail = async (
     html: otpChangeEmailTemplate(name, otp, newEmail),
   }, 'Email change OTP');
 };
+
+/**
+ * Gửi email nhắc nhở học tập hàng ngày
+ */
+export const sendDailyReminderEmail = async (
+  to: string,
+  name: string,
+  dueWordsCount: number
+): Promise<void> => {
+  const html = `
+  <!DOCTYPE html>
+  <html lang="vi">
+  <head>
+    <meta charset="UTF-8">
+    <title>Nhắc nhở học tập - Minlish</title>
+  </head>
+  <body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f4f7fe;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:40px auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+      <tr>
+        <td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:40px;text-align:center;">
+          <h1 style="color:#fff;margin:0;font-size:28px;font-weight:700;">🎓 Minlish</h1>
+          <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:14px;">Nhắc nhở học tập hàng ngày</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:40px;">
+          <h2 style="color:#1a1a2e;font-size:22px;margin:0 0 16px;">Chào bạn, ${name}! 👋</h2>
+          <p style="color:#555;line-height:1.7;margin:0 0 24px;">
+            Đã đến thời gian học tập của bạn hôm nay. Đừng bỏ lỡ thói quen học tập để duy trì chuỗi ngày liên tiếp của mình nhé!
+          </p>
+          <div style="background:#f8f9ff;border-radius:12px;padding:20px;margin:0 0 24px;text-align:center;">
+            <p style="color:#667eea;font-weight:600;margin:0 0 8px;font-size:16px;">📊 Trạng thái học tập của bạn:</p>
+            <p style="color:#1a1a2e;font-size:20px;font-weight:700;margin:0;">
+              Bạn đang có <span style="color:#e53e3e;font-size:24px;">${dueWordsCount}</span> từ vựng cần ôn tập!
+            </p>
+            <p style="color:#aaa;font-size:13px;margin:8px 0 0;">Chỉ mất khoảng 10 phút mỗi ngày để nâng cao phản xạ tiếng Anh.</p>
+          </div>
+          <div style="text-align:center;">
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" 
+               style="display:inline-block;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;box-shadow:0 4px 12px rgba(102,126,234,0.3);">
+              Bắt đầu học ngay →
+            </a>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td style="background:#f8f9ff;padding:24px;text-align:center;">
+          <p style="color:#aaa;font-size:13px;margin:0;">© 2025 Minlish. Email này được gửi tự động. Nếu muốn tắt thông báo qua email, bạn vui lòng thay đổi cài đặt trong mục Cấu hình tài khoản.</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+  </html>
+  `;
+
+  await sendMailAndLog({
+    from: `"Minlish ⏰" <${process.env.MAIL_USER}>`,
+    to,
+    subject: '⏰ Đến giờ ôn tập tiếng Anh rồi! - Minlish',
+    html,
+  }, 'Daily reminder email');
+};

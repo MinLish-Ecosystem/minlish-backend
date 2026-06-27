@@ -4,6 +4,7 @@
 import { Types } from 'mongoose';
 import { LearningProgress } from '../models/LearningProgress';
 import { DailyStats } from '../models/DailyStats';
+import { UserProfile } from '../models/UserProfile';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper Functions
@@ -62,7 +63,7 @@ export async function getDashboardStats(userId: string) {
   const todayMidnight = new Date(now);
   todayMidnight.setHours(0, 0, 0, 0);
 
-  const [masteredCount, totals, recentStats, todayStats, dueCount] = await Promise.all([
+  const [masteredCount, totals, recentStats, todayStats, dueCount, profile] = await Promise.all([
     // Số từ đã mastered
     LearningProgress.countDocuments({ userId: userObjectId, status: 'mastered' }),
 
@@ -98,6 +99,9 @@ export async function getDashboardStats(userId: string) {
       status: { $ne: 'new' },
       nextReviewDate: { $lte: now },
     }),
+
+    // User profile để lấy chỉ tiêu dailyGoal, reviewPerDay
+    UserProfile.findOne({ userId: userObjectId }).lean(),
   ]);
 
   const { current: currentStreak, longest: longestStreak } = calcStreak(recentStats);
@@ -106,6 +110,12 @@ export async function getDashboardStats(userId: string) {
   const correctAnswers = totals[0]?.correctAnswers ?? 0;
   const timeSpent = totals[0]?.timeSpent ?? 0;
   const accuracy = totalReviews > 0 ? Math.round((correctAnswers / totalReviews) * 100) : 0;
+
+  const dailyGoal = profile?.dailyGoal ?? 10;
+  const reviewPerDay = (profile as any)?.reviewPerDay ?? 20;
+
+  const newWordsLearnedToday = todayStats?.newWordsLearned ?? 0;
+  const wordsReviewedToday = todayStats?.wordsReviewed ?? 0;
 
   return {
     streak: { current: currentStreak, longest: longestStreak },
@@ -118,9 +128,13 @@ export async function getDashboardStats(userId: string) {
       totalHours: Math.round((timeSpent / 3600) * 10) / 10,
     },
     currentLevel: estimateLevel(masteredCount, accuracy),
+    dailyGoal,
+    reviewPerDay,
+    isNewGoalMet: newWordsLearnedToday >= dailyGoal,
+    isReviewGoalMet: wordsReviewedToday >= reviewPerDay,
     todayStats: {
-      newLearned: todayStats?.newWordsLearned ?? 0,
-      reviewed: todayStats?.wordsReviewed ?? 0,
+      newLearned: newWordsLearnedToday,
+      reviewed: wordsReviewedToday,
       accuracy:
         todayStats && todayStats.totalAnswers > 0
           ? Math.round((todayStats.correctAnswers / todayStats.totalAnswers) * 100)

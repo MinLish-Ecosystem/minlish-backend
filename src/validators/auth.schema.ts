@@ -62,3 +62,16 @@ export const resetPasswordSchema = z.object({
       .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Password must contain at least one uppercase letter, one lowercase letter, and one number'),
   }),
 });
+
+export const verifyMfaSchema = z.object({
+  body: z.object({
+    email: z.string({ message: 'Email is required' })
+      .email('Please provide a valid email')
+      .trim()
+      .toLowerCase(),
+    otp: z.string({ message: 'OTP is required' })
+      .min(4, 'OTP must be at least 4 characters')
+      .max(8, 'OTP cannot exceed 8 characters')
+      .regex(/^\d+$/, 'OTP must contain only numbers'),
+  }),
+});

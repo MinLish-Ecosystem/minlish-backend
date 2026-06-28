@@ -4,7 +4,9 @@ import { generateOTP, getOTPExpiresAt } from "../utils/otp.util";
 import {
   sendOTPRegistrationEmail,
   sendPasswordResetEmail,
+  sendMfaLoginEmail,
 } from "./mail.service";
+import { getOrCreateSystemConfig } from "../models/SystemConfig";
 import {
   signAccessToken,
   signRefreshToken,
@@ -79,26 +81,122 @@ export const loginUser = async (input: LoginInput) => {
     );
   }
 
-  // 3. Tạo payload cho token
+  // 3. Check for admin MFA setting
+  if (user.role === "admin") {
+    const config = await getOrCreateSystemConfig();
+    if (config.enforceMfaAdmin) {
+      const otp = generateOTP(config.otpLength || 6);
+      const expiresAt = getOTPExpiresAt(5); // 5 minutes expiration
+
+      await OTP.create({
+        email: user.email,
+        otp,
+        type: "mfa_login",
+        expiresAt,
+      });
+
+      await sendMfaLoginEmail(user.email, user.name, otp);
+
+      return {
+        mfaRequired: true,
+        email: user.email,
+      };
+    }
+  }
+
+  // 4. Tạo payload cho token
   const payload: TokenPayload = {
     userId: (user._id as any).toString(),
     email: user.email,
     role: user.role,
   };
 
-  // 4. Ký Access Token và Refresh Token
+  // 5. Ký Access Token và Refresh Token
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
 
-  // 5. Lưu Refresh Token vào DB (để sau này có thể logout = xóa token này)
+  // 6. Lưu Refresh Token vào DB
   user.refreshToken = refreshToken;
   await user.save();
 
   // Tính toán redirectUrl dựa vào role
   const redirectUrl =
-    user.role === "admin" ? "/admin/profile" : "/user/profile";
+    user.role === "admin" ? "/admin/dashboard" : "/dashboard";
 
-  // 6. Trả về data (không trả password)
+  // 7. Trả về data (không trả password)
+  return {
+    accessToken,
+    refreshToken,
+    redirectUrl,
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      avatar: user.avatar,
+      isVerified: user.isVerified,
+    },
+  };
+};
+
+/**
+ * Xác minh mã OTP đăng nhập MFA (Admin)
+ */
+export interface VerifyMfaInput {
+  email: string;
+  otp: string;
+}
+
+export const verifyMfaLogin = async (input: VerifyMfaInput) => {
+  const { email, otp } = input;
+
+  const otpRecord = await OTP.findOne({
+    email: email.toLowerCase(),
+    otp,
+    type: "mfa_login",
+  });
+
+  if (!otpRecord) {
+    throw new AppError(
+      "Mã xác thực không chính xác hoặc đã hết hạn",
+      HttpStatus.BAD_REQUEST,
+      ErrorCodes.OTP_INVALID
+    );
+  }
+
+  await OTP.deleteOne({ _id: otpRecord._id });
+
+  const user = await User.findOne({ email: email.toLowerCase() }).select("+refreshToken");
+  if (!user) {
+    throw new AppError(
+      "Người dùng không tồn tại hoặc đã bị xóa",
+      HttpStatus.NOT_FOUND,
+      ErrorCodes.USER_NOT_FOUND
+    );
+  }
+
+  if (!user.isActive) {
+    throw new AppError(
+      user.banReason || "Tài khoản của bạn đã bị khóa",
+      HttpStatus.FORBIDDEN,
+      ErrorCodes.FORBIDDEN
+    );
+  }
+
+  const payload: TokenPayload = {
+    userId: (user._id as any).toString(),
+    email: user.email,
+    role: user.role,
+  };
+
+  const accessToken = signAccessToken(payload);
+  const refreshToken = signRefreshToken(payload);
+
+  user.refreshToken = refreshToken;
+  await user.save();
+
+  const redirectUrl = user.role === "admin" ? "/admin/dashboard" : "/dashboard";
+
   return {
     accessToken,
     refreshToken,

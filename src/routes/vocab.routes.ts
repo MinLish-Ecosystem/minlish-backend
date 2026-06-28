@@ -16,6 +16,7 @@ import {
   updateSetController,
   deleteSetController,
   clonePublicSetController,
+  cancelPendingApprovalController,
   getWordsController,
   addWordController,
   updateWordController,
@@ -52,8 +53,11 @@ router.put("/sets/:id", verifyToken, validateZod(updateSetSchema), updateSetCont
 // DELETE /api/v1/vocab/sets/:id    — Xóa bộ từ (cascade words + progress)
 router.delete("/sets/:id", verifyToken, deleteSetController);
 
-// POST /api/v1/vocab/sets/:id/clone — Clone public set về My Library
+// POST /api/v1/vocab/sets/:id/clone          — Clone public set về My Library
 router.post("/sets/:id/clone", verifyToken, clonePublicSetController);
+
+// POST /api/v1/vocab/sets/:id/cancel-pending  — Cancel pending review (atomic, race-safe)
+router.post("/sets/:id/cancel-pending", verifyToken, cancelPendingApprovalController);
 
 // ─── Words trong một Set ────────────────────────────────────────────────────
 

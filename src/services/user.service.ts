@@ -9,8 +9,9 @@ import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
 import { OTP } from '../models/OTP';
 import { generateOTP, getOTPExpiresAt } from '../utils/otp.util';
-import { sendEmailChangeRequestEmail } from './mail.service';
+import { sendEmailChangeRequestEmail, sendChangePasswordMfaEmail } from './mail.service';
 import { updateImage } from './cloudinary.service';
+import { getOrCreateSystemConfig } from '../models/SystemConfig';
 
 /**
  * Lấy thông tin profile của user theo ID
@@ -238,4 +239,93 @@ export const updateLearningProfile = async (
       soundEffect: profile.preferences.soundEffect,
     },
   };
+};
+
+/**
+ * Yêu cầu đổi mật khẩu (hỗ trợ kiểm tra MFA cho Admin)
+ */
+export const changePasswordService = async (
+  userId: string,
+  data: { oldPassword: string; newPassword: string }
+): Promise<{ mfaRequired: boolean; message?: string }> => {
+  const user = await User.findById(userId).select('+password');
+  if (!user) {
+    throw new AppError('Không tìm thấy người dùng', HttpStatus.NOT_FOUND, ErrorCodes.USER_NOT_FOUND);
+  }
+
+  // So sánh mật khẩu cũ
+  const isMatch = await user.comparePassword(data.oldPassword);
+  if (!isMatch) {
+    throw new AppError('Mật khẩu hiện tại không chính xác', HttpStatus.BAD_REQUEST, ErrorCodes.INVALID_CREDENTIALS);
+  }
+
+  // Kiểm tra MFA đối với Admin
+  if (user.role === 'admin') {
+    const config = await getOrCreateSystemConfig();
+    if (config.enforceMfaAdmin) {
+      // Xóa OTP đổi mật khẩu cũ
+      await OTP.deleteMany({ email: user.email, type: 'change_password' });
+
+      // Sinh OTP mới
+      const otpCode = generateOTP(config.otpLength || 6);
+      const expiresAt = getOTPExpiresAt(5); // 5 phút
+
+      await OTP.create({
+        email: user.email,
+        otp: otpCode,
+        type: 'change_password',
+        expiresAt,
+      });
+
+      // Gửi email
+      await sendChangePasswordMfaEmail(user.email, user.name, otpCode);
+
+      return { mfaRequired: true };
+    }
+  }
+
+  // Đổi mật khẩu trực tiếp (với User thường hoặc khi Admin tắt MFA)
+  user.password = data.newPassword;
+  await user.save();
+
+  return { mfaRequired: false, message: 'Đổi mật khẩu thành công' };
+};
+
+/**
+ * Xác nhận mã OTP và hoàn tất đổi mật khẩu
+ */
+export const verifyChangePasswordService = async (
+  userId: string,
+  data: { oldPassword: string; newPassword: string; otp: string }
+): Promise<{ message: string }> => {
+  const user = await User.findById(userId).select('+password');
+  if (!user) {
+    throw new AppError('Không tìm thấy người dùng', HttpStatus.NOT_FOUND, ErrorCodes.USER_NOT_FOUND);
+  }
+
+  // So sánh mật khẩu cũ lần nữa để đảm bảo an toàn
+  const isMatch = await user.comparePassword(data.oldPassword);
+  if (!isMatch) {
+    throw new AppError('Mật khẩu hiện tại không chính xác', HttpStatus.BAD_REQUEST, ErrorCodes.INVALID_CREDENTIALS);
+  }
+
+  // Xác minh OTP
+  const otpRecord = await OTP.findOne({
+    email: user.email,
+    otp: data.otp,
+    type: 'change_password',
+  });
+
+  if (!otpRecord) {
+    throw new AppError('Mã OTP xác thực không chính xác hoặc đã hết hạn', HttpStatus.BAD_REQUEST, ErrorCodes.OTP_INVALID);
+  }
+
+  // Xóa OTP
+  await OTP.deleteOne({ _id: otpRecord._id });
+
+  // Lưu mật khẩu mới
+  user.password = data.newPassword;
+  await user.save();
+
+  return { message: 'Đổi mật khẩu thành công' };
 };

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { sendSuccess } from '../utils/response.util';
-import { getUserById, updateUserProfile, requestEmailChange, confirmEmailChange, getLearningProfile, updateLearningProfile } from '../services/user.service';
+import { getUserById, updateUserProfile, requestEmailChange, confirmEmailChange, getLearningProfile, updateLearningProfile, changePasswordService, verifyChangePasswordService } from '../services/user.service';
 import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
@@ -260,4 +260,30 @@ export const updateLearningProfileController = catchAsync(async (req: Request, r
   }
   const profile = await updateLearningProfile(userId, req.body);
   return sendSuccess(res, 'Learning profile updated successfully', profile);
+});
+
+/**
+ * Đổi mật khẩu (xác minh mật khẩu cũ và xử lý MFA cho Admin)
+ */
+export const changePassword = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.id || req.user?._id?.toString();
+  if (!userId) {
+    throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
+  }
+
+  const result = await changePasswordService(userId, req.body);
+  return sendSuccess(res, result.mfaRequired ? 'MFA OTP sent to admin email' : 'Password changed successfully', result);
+});
+
+/**
+ * Xác nhận mã OTP và đổi mật khẩu
+ */
+export const verifyChangePassword = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.id || req.user?._id?.toString();
+  if (!userId) {
+    throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
+  }
+
+  const result = await verifyChangePasswordService(userId, req.body);
+  return sendSuccess(res, 'Password changed successfully', result);
 });

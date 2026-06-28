@@ -17,6 +17,7 @@ export const createPostSchema = z.object({
     }).optional(),
     coverImage: z.string().trim().optional(),
     isFeatured: z.boolean().optional(),
+    isPublic: z.boolean().optional(),
   }),
 });
 
@@ -39,6 +40,7 @@ export const queryPostSchema = z.object({
     sortBy: z.enum(['latest', 'popular', 'trending', 'discussed']).optional(),
     author: z.string().optional(),
     bookmarked: z.string().optional(),
+    manage: z.string().optional(),
     page: z.coerce.number().int().min(1).optional(),
     limit: z.coerce.number().int().min(1).max(50).optional(),
   }),
@@ -52,5 +54,6 @@ export const updatePostSchema = z.object({
     difficulty: z.enum(['Beginner', 'Intermediate', 'Advanced']).optional(),
     coverImage: z.string().trim().optional(),
     isFeatured: z.boolean().optional(),
+    isPublic: z.boolean().optional(),
   }),
 });

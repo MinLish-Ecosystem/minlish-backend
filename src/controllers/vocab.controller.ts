@@ -60,21 +60,21 @@ export const getSetDetailController = catchAsync(async (req: Request, res: Respo
 
 export const createSetController = catchAsync(async (req: Request, res: Response) => {
   const userId = req.user!.id;
-  const set = await vocabService.createSet(userId, req.body);
+  const set = await vocabService.createSet(userId, req.body, req.user?.role === 'admin');
   return sendSuccess(res, "Vocabulary set created successfully", set, 201);
 });
 
 export const updateSetController = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   const userId = req.user!.id;
-  const set = await vocabService.updateSet(id, userId, req.body);
+  const set = await vocabService.updateSet(id, userId, req.body, req.user?.role === 'admin');
   return sendSuccess(res, "Vocabulary set updated successfully", set);
 });
 
 export const deleteSetController = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   const userId = req.user!.id;
-  await vocabService.deleteSet(id, userId);
+  await vocabService.deleteSet(id, userId, req.user?.role === 'admin');
   return sendSuccess(res, "Vocabulary set deleted successfully");
 });
 
@@ -83,6 +83,18 @@ export const clonePublicSetController = catchAsync(async (req: Request, res: Res
   const userId = req.user!.id;
   const set = await vocabService.clonePublicSet(id, userId);
   return sendSuccess(res, "Set cloned to library successfully", set, 201);
+});
+
+/**
+ * POST /api/v1/vocab/sets/:id/cancel-pending
+ * Atomically pulls a pending-review set back to private.
+ * Guards against race condition with simultaneous admin approval.
+ */
+export const cancelPendingApprovalController = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userId = req.user!.id;
+  const set = await vocabService.cancelPendingApproval(id, userId);
+  return sendSuccess(res, "Set pulled back to private successfully", set);
 });
 
 export const getWordsController = catchAsync(async (req: Request, res: Response) => {

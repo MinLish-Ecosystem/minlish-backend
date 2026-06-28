@@ -52,6 +52,7 @@ export interface DueSummaryResponse {
   totalDueCount: number;
   rawNewWordsCount?: number;
   rawDueReviewsCount?: number;
+  dailyGoal?: number;
 }
 
 export interface SubmitReviewDTO {

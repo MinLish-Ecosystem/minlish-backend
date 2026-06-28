@@ -6,6 +6,7 @@ import {
   unpublishSetSchema,
   adminPaginationSchema,
   adminIdParamSchema,
+  resetUserAuthSchema,
 } from '../validators/admin.schema';
 import {
 	listUsersController,
@@ -24,6 +25,10 @@ import {
 	getModerationLogsController,
 	overrideModerationController,
 	runAutoModerationController,
+	getPendingModerationPostsController,
+	overridePostModerationController,
+	listAllPostsController,
+	resetUserAuthController,
 } from '../controllers/admin.controller';
 
 /**
@@ -204,6 +209,41 @@ router.delete('/users/:id', validateZod(adminIdParamSchema), deleteUserControlle
 
 /**
  * @swagger
+ * /api/v1/admin/users/{id}/reset-auth:
+ *   post:
+ *     summary: Reset thông tin auth và gửi mật khẩu tạm thời
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "newemail@example.com"
+ *     responses:
+ *       200:
+ *         description: Đã reset thành công và gửi mail
+ *       404:
+ *         description: Không tìm thấy user
+ */
+router.post('/users/:id/reset-auth', validateZod(resetUserAuthSchema), resetUserAuthController);
+
+/**
+ * @swagger
  * /api/v1/admin/stats:
  *   get:
  *     summary: Lấy thống kê tổng quan hệ thống
@@ -363,5 +403,10 @@ router.get('/moderation/pending', getPendingModerationSetsController);
 router.get('/moderation/logs', getModerationLogsController);
 router.put('/moderation/override', overrideModerationController);
 router.post('/moderation/run', runAutoModerationController);
+
+// Post Moderation & Management
+router.get('/posts', listAllPostsController);
+router.get('/moderation/posts/pending', getPendingModerationPostsController);
+router.put('/moderation/posts/override', overridePostModerationController);
 
 export default router;

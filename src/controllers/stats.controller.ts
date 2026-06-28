@@ -86,7 +86,10 @@ export const getDashboardStatsController = catchAsync(async (req: Request, res: 
   if (!userId)
     throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
 
-  const stats = await getDashboardStats(userId);
+  const daysQuery = req.query.days as string | undefined;
+  const days = daysQuery ? parseInt(daysQuery, 10) : undefined;
+
+  const stats = await getDashboardStats(userId, days);
   sendSuccess(res, 'Dashboard stats fetched', stats);
 });
 
@@ -148,7 +151,7 @@ export const getDailyStatsController = catchAsync(async (req: Request, res: Resp
   if (!userId)
     throw new AppError('Unauthorized', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
 
-  const days = Math.min(365, Math.max(1, parseInt(req.query.days as string) || 30));
+  const days = Math.min(3650, Math.max(1, parseInt(req.query.days as string) || 30));
   const stats = await getDailyStats(userId, days);
   sendSuccess(res, 'Daily stats fetched', stats);
 });

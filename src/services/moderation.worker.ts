@@ -1,6 +1,8 @@
 import { Queue, Worker } from 'bullmq';
 import { getOrCreateSystemConfig } from '../models/SystemConfig';
-import { runAutoModerationBatch } from './moderation.service';
+import { runAutoModerationBatch, runAutoModerationPostsBatch } from './moderation.service';
+import { VocabularySet } from '../models/VocabularySet';
+import { Post } from '../models/Post';
 
 const REDIS_URL = process.env.REDIS_URL;
 const MODERATION_QUEUE_NAME = 'auto-moderation';
@@ -32,6 +34,23 @@ const parseRedisUrl = (url: string) => {
  * Khởi chạy Worker kiểm duyệt tự động lúc server boot.
  */
 export async function initModerationWorker() {
+  // Sync legacy public sets and posts without moderationStatus to 'approved'
+  try {
+    const setsSync = await VocabularySet.updateMany(
+      { isPublic: true, moderationStatus: { $exists: false } },
+      { $set: { moderationStatus: 'approved' } }
+    );
+    const postsSync = await Post.updateMany(
+      { isPublic: true, moderationStatus: { $exists: false } },
+      { $set: { moderationStatus: 'approved' } }
+    );
+    if (setsSync.modifiedCount > 0 || postsSync.modifiedCount > 0) {
+      console.log(`[Moderation Boot Sync] Synced legacy data: ${setsSync.modifiedCount} sets, ${postsSync.modifiedCount} posts.`);
+    }
+  } catch (err) {
+    console.error('[Moderation Boot Sync] Failed to sync legacy public content:', err);
+  }
+
   const config = await getOrCreateSystemConfig();
   const interval = config.moderationInterval || 3;
 
@@ -40,11 +59,13 @@ export async function initModerationWorker() {
     
     // Khởi chạy đợt duyệt thô lúc boot (chạy bất đồng bộ)
     runAutoModerationBatch().catch(err => console.error('Error in fallback moderation boot run:', err));
+    runAutoModerationPostsBatch().catch(err => console.error('Error in fallback post moderation boot run:', err));
 
     // Thiết lập timer lặp
     fallbackTimerId = setInterval(() => {
       console.log('[Auto Moderation Fallback] Running periodic auto-moderation batch...');
       runAutoModerationBatch().catch(err => console.error('Error in fallback moderation run:', err));
+      runAutoModerationPostsBatch().catch(err => console.error('Error in fallback post moderation run:', err));
     }, interval * 60 * 60 * 1000);
 
     return;
@@ -65,6 +86,7 @@ export async function initModerationWorker() {
         if (job.name === 'run-moderation-batch') {
           console.log('[Moderation Worker] Starting auto-moderation batch job...');
           await runAutoModerationBatch();
+          await runAutoModerationPostsBatch();
         }
       },
       { connection: redisOpts, concurrency: 1 }
@@ -77,6 +99,7 @@ export async function initModerationWorker() {
 
     // Duyệt nhanh lúc khởi động để xử lý các bộ từ đang ứ đọng
     runAutoModerationBatch().catch(err => console.error('Error in boot moderation run:', err));
+    runAutoModerationPostsBatch().catch(err => console.error('Error in boot post moderation run:', err));
 
   } catch (error) {
     console.error('❌ Failed to initialize BullMQ Moderation Worker:', error);
@@ -97,6 +120,7 @@ export async function rescheduleModerationJob(intervalHours: number): Promise<vo
     fallbackTimerId = setInterval(() => {
       console.log('[Auto Moderation Fallback] Running periodic auto-moderation batch...');
       runAutoModerationBatch().catch(err => console.error('Error in fallback moderation run:', err));
+      runAutoModerationPostsBatch().catch(err => console.error('Error in fallback post moderation run:', err));
     }, intervalHours * 60 * 60 * 1000);
     console.log(`[Moderation Worker] Fallback timer successfully rescheduled to every ${intervalHours} hour(s).`);
     return;

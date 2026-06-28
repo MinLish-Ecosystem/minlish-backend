@@ -184,7 +184,7 @@ export const searchQuerySchema = z.object({
       { message: 'sortBy must be: newest | oldest | popular | alphabetical' }
     ).optional(),
     page: z.coerce.number().int().min(1, 'Page must be >= 1').optional(),
-    limit: z.coerce.number().int().min(1).max(50, 'Limit <= 50').optional(),
+    limit: z.coerce.number().int().min(1).max(100, 'Limit <= 100').optional(),
     includeProgress: z.string().optional().transform(v => v !== undefined ? (v === 'true' || v === '1') : undefined),
   }),
 });

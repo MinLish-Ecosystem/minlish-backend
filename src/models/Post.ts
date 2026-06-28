@@ -12,6 +12,10 @@ export interface IPost extends Document {
   likes: Types.ObjectId[];
   bookmarks: Types.ObjectId[];
   isFeatured: boolean;
+  isPublic: boolean;
+  moderationStatus: 'pending' | 'approved' | 'rejected';
+  moderationReason: string;
+  flaggedTerms?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -73,6 +77,23 @@ const PostSchema = new Schema<IPost>(
     isFeatured: {
       type: Boolean,
       default: false,
+    },
+    isPublic: {
+      type: Boolean,
+      default: false,
+    },
+    moderationStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'approved',
+    },
+    moderationReason: {
+      type: String,
+      default: '',
+    },
+    flaggedTerms: {
+      type: [String],
+      default: [],
     },
   },
   { timestamps: true }

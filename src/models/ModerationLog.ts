@@ -8,6 +8,7 @@ export interface IModerationResult {
   wordsCount: number;
   status: 'approved' | 'rejected';
   reason: string;
+  flaggedTerms?: string[];
 }
 
 export interface IModerationLog extends Document {
@@ -27,6 +28,7 @@ const ModerationResultSchema = new Schema<IModerationResult>({
   wordsCount: { type: Number, required: true },
   status: { type: String, enum: ['approved', 'rejected'], required: true },
   reason: { type: String, required: true },
+  flaggedTerms: { type: [String], default: [] },
 });
 
 const ModerationLogSchema = new Schema<IModerationLog>(

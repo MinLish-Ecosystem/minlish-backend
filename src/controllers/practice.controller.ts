@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import { DailyChallenge } from "../models/DailyChallenge";
 import { DailyPracticeResult } from "../models/DailyPracticeResult";
 import { User } from "../models/User";
+import { DailyStats } from "../models/DailyStats";
+import mongoose from "mongoose";
 import { generateChallengeForDate } from "../services/practice.worker";
 import { redis } from "../config/redis";
 import { catchAsync } from "../utils/catchAsync";
@@ -195,6 +197,23 @@ export const submitDailyChallenge = catchAsync(async (req: Request, res: Respons
     correctAnswers: correctCount,
     timeTaken: safeTimeTaken,
   }).save();
+
+  // Update DailyStats for the practice session
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+
+  await DailyStats.findOneAndUpdate(
+    { userId: new mongoose.Types.ObjectId(userId), date: todayMidnight },
+    {
+      $inc: {
+        wordsReviewed: gradedQuestions.length,
+        correctAnswers: correctCount,
+        totalAnswers: gradedQuestions.length,
+        timeSpent: safeTimeTaken
+      }
+    },
+    { upsert: true }
+  );
 
   // 6. Push to Redis Sorted Set Leaderboard
   if (redis) {

@@ -63,6 +63,7 @@ function buildSortOrder(sortBy?: string): Record<string, 1 | -1> {
 function mapSetToResponse(s: any): VocabSetResponse {
   return {
     id: s._id.toString(),
+    userId: s.userId ? s.userId.toString() : undefined,
     name: s.name,
     description: s.description,
     coverUrl: s.coverUrl ?? "",
@@ -71,6 +72,8 @@ function mapSetToResponse(s: any): VocabSetResponse {
     colorTheme: s.colorTheme,
     tags: s.tags ?? [],
     isPublic: Boolean(s.isPublic),
+    moderationStatus: s.moderationStatus || 'approved',
+    moderationReason: s.moderationReason || '',
     totalWords: s.totalWords ?? 0,
     learnerCount: s.learnerCount ?? 0,
     clonedFrom: s.clonedFrom ? s.clonedFrom.toString() : undefined,
@@ -318,7 +321,18 @@ export async function getSetById(
 export async function createSet(
   userId: string,
   data: CreateSetDTO,
+  isAdmin: boolean = false,
 ): Promise<VocabSetResponse> {
+  // Check if a set with the same name already exists for this user
+  const existingSet = await VocabularySet.findOne({
+    userId: new Types.ObjectId(userId),
+    name: { $regex: new RegExp(`^${data.name.trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i') },
+    isDeleted: { $ne: true }
+  });
+  if (existingSet) {
+    throw new AppError("Bạn đã có một bộ từ vựng trùng tên này trong thư viện cá nhân", HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+  }
+
   let finalCoverUrl = data.coverUrl;
   if (data.coverUrl && (data.coverUrl.startsWith('data:image/') || data.coverUrl.includes('base64,'))) {
     const uploadRes = await uploadImage(data.coverUrl, 'minlish_covers');
@@ -330,7 +344,7 @@ export async function createSet(
     userId: new Types.ObjectId(userId),
     ...data,
     coverUrl: finalCoverUrl,
-    moderationStatus: isPublic ? 'pending' : 'approved',
+    moderationStatus: isPublic ? (isAdmin ? 'approved' : 'pending') : 'approved',
     moderationReason: '',
   }).save();
 
@@ -347,6 +361,7 @@ export async function updateSet(
   setId: string,
   userId: string,
   data: Partial<CreateSetDTO>,
+  isAdmin: boolean = false,
 ): Promise<VocabSetResponse> {
   const existingSet = await VocabularySet.findOne({
     _id: setId,
@@ -358,6 +373,33 @@ export async function updateSet(
     throw new AppError("Set not found or unauthorized", HttpStatus.NOT_FOUND, ErrorCodes.FORBIDDEN);
   }
 
+  // Non-admin: block content edits on sets that are pending moderation.
+  // Only allow setting isPublic=false (cancel pending) — handled by cancelPendingApproval.
+  if (!isAdmin && existingSet.isPublic && existingSet.moderationStatus === 'pending') {
+    // Allow ONLY pulling back to private (isPublic: false with no other fields)
+    const onlySettingPrivate = data.isPublic === false && Object.keys(data).length === 1;
+    if (!onlySettingPrivate) {
+      throw new AppError(
+        "Bộ từ đang chờ duyệt. Bạn không thể chỉnh sửa nội dung lúc này. Hãy kéo về Riêng tư để chỉnh sửa.",
+        HttpStatus.BAD_REQUEST,
+        ErrorCodes.VALIDATION_FAILED
+      );
+    }
+  }
+
+  // Check if renaming to a name that already exists in user's sets
+  if (data.name && data.name.trim().toLowerCase() !== existingSet.name.toLowerCase()) {
+    const duplicateName = await VocabularySet.findOne({
+      userId: new Types.ObjectId(userId),
+      name: { $regex: new RegExp(`^${data.name.trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i') },
+      _id: { $ne: new Types.ObjectId(setId) },
+      isDeleted: { $ne: true }
+    });
+    if (duplicateName) {
+      throw new AppError("Bạn đã có một bộ từ vựng trùng tên này trong thư viện cá nhân", HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+    }
+  }
+
   let finalCoverUrl = data.coverUrl;
   if (data.coverUrl !== undefined) {
     if (data.coverUrl && (data.coverUrl.startsWith('data:image/') || data.coverUrl.includes('base64,'))) {
@@ -367,8 +409,8 @@ export async function updateSet(
   }
 
   const willBePublic = data.isPublic !== undefined ? data.isPublic : existingSet.isPublic;
-  // Reset moderationStatus to pending if set is public or becomes public on update
-  const resetModeration = willBePublic;
+  // Reset moderationStatus to pending if set is public or becomes public on update, EXCEPT if updated by Admin
+  const resetModeration = willBePublic && !isAdmin;
 
   const set = await VocabularySet.findOneAndUpdate(
     { _id: setId, userId: new Types.ObjectId(userId), isDeleted: { $ne: true } },
@@ -376,7 +418,9 @@ export async function updateSet(
       $set: {
         ...data,
         ...(data.coverUrl !== undefined ? { coverUrl: finalCoverUrl } : {}),
-        ...(resetModeration ? { moderationStatus: 'pending', moderationReason: '' } : {})
+        ...(resetModeration ? { moderationStatus: 'pending', moderationReason: '' } : {}),
+        // If setting private, also reset moderation to approved (private sets don't need approval)
+        ...(data.isPublic === false ? { moderationStatus: 'approved', moderationReason: '' } : {})
       } 
     },
     { new: true },
@@ -391,15 +435,25 @@ export async function updateSet(
  *
  * TODO (Người 1): Implement body của function này
  */
-export async function deleteSet(setId: string, userId: string): Promise<void> {
-  const set = await VocabularySet.findOne({
-    _id: setId,
-    userId: new Types.ObjectId(userId),
-    isDeleted: { $ne: true },
-  }).lean();
+export async function deleteSet(setId: string, userId: string, isAdmin: boolean = false): Promise<void> {
+  const query = isAdmin
+    ? { _id: setId, isDeleted: { $ne: true } }
+    : { _id: setId, userId: new Types.ObjectId(userId), isDeleted: { $ne: true } };
+  const set = await VocabularySet.findOne(query).lean();
 
   if (!set) {
-    throw new AppError("Not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+    throw new AppError("Set not found or unauthorized", HttpStatus.NOT_FOUND, ErrorCodes.FORBIDDEN);
+  }
+
+  // Non-admin cannot delete a set that is pending moderation review.
+  // This prevents race conditions where a set is approved/rejected by admin
+  // while the user deletes it simultaneously.
+  if (!isAdmin && set.isPublic && set.moderationStatus === 'pending') {
+    throw new AppError(
+      "Không thể xóa bộ từ đang chờ duyệt. Hãy kéo về trạng thái Riêng tư trước.",
+      HttpStatus.BAD_REQUEST,
+      ErrorCodes.VALIDATION_FAILED
+    );
   }
 
   if (set.coverUrl) {
@@ -438,6 +492,10 @@ export async function clonePublicSet(
 
   if (!sourceSet || !sourceSet.isPublic || sourceSet.moderationStatus !== "approved") {
     throw new AppError("Public set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  if (sourceSet.userId.toString() === userId) {
+    throw new AppError("Bạn không thể thêm bộ từ vựng do chính mình tạo ra vào thư viện cá nhân", HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
   }
 
   // Check if already cloned
@@ -481,6 +539,57 @@ export async function clonePublicSet(
   await VocabularySet.findByIdAndUpdate(sourceSetId, { $inc: { learnerCount: 1 } });
 
   return mapSetToResponse(newSet.toObject());
+}
+
+/**
+ * Cancel a pending moderation review by atomically setting the set to private.
+ * Uses a conditional update to prevent race condition with admin approval:
+ * if admin already approved/rejected before this runs, the condition fails and
+ * we simply fetch the current state and return it unchanged.
+ */
+export async function cancelPendingApproval(
+  setId: string,
+  userId: string,
+): Promise<VocabSetResponse> {
+  if (!Types.ObjectId.isValid(setId)) {
+    throw new AppError("Set not found", HttpStatus.NOT_FOUND, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  // Atomically: only update if STILL pending (guard against race with admin action)
+  const updated = await VocabularySet.findOneAndUpdate(
+    {
+      _id: setId,
+      userId: new Types.ObjectId(userId),
+      moderationStatus: 'pending',
+      isDeleted: { $ne: true },
+    },
+    {
+      $set: {
+        isPublic: false,
+        moderationStatus: 'approved', // private sets are effectively 'approved' (no review needed)
+        moderationReason: '',
+      },
+    },
+    { new: true },
+  ).lean();
+
+  if (updated) {
+    return mapSetToResponse(updated);
+  }
+
+  // If no document matched, it means admin already processed it — return current state
+  const current = await VocabularySet.findOne({
+    _id: setId,
+    userId: new Types.ObjectId(userId),
+    isDeleted: { $ne: true },
+  }).lean();
+
+  if (!current) {
+    throw new AppError("Set not found or unauthorized", HttpStatus.NOT_FOUND, ErrorCodes.FORBIDDEN);
+  }
+
+  // Return the current state with a message so frontend can handle it gracefully
+  return mapSetToResponse(current);
 }
 
 // ─── Word Services ───────────────────────────────────────────────────────────

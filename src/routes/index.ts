@@ -9,6 +9,7 @@ import syncRoutes from './sync.routes';
 import statsRoutes from './stats.routes';
 import practiceRoutes from './practice.routes';
 import postRoutes from './post.routes';
+import reportRoutes from './report.routes';
 
 /**
  * Router gốc — Mount tất cả sub-routers vào đây
@@ -38,5 +39,6 @@ router.use('/notifications', notificationRoutes);
 router.use('/stats', statsRoutes);
 router.use('/practice', practiceRoutes);
 router.use('/posts', postRoutes);
+router.use('/reports', reportRoutes);
 
 export default router;

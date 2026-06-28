@@ -324,3 +324,166 @@ export const sendDailyReminderEmail = async (
     html,
   }, 'Daily reminder email');
 };
+
+/**
+ * Gửi email OTP đăng nhập MFA
+ */
+export const sendMfaLoginEmail = async (
+  to: string,
+  name: string,
+  otp: string
+): Promise<void> => {
+  const html = `
+  <!DOCTYPE html>
+  <html lang="vi">
+  <head>
+    <meta charset="UTF-8">
+    <title>Mã xác thực đăng nhập (MFA) - Minlish</title>
+  </head>
+  <body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f4f7fe;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:40px auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+      <tr>
+        <td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:40px;text-align:center;">
+          <h1 style="color:#fff;margin:0;font-size:28px;font-weight:700;">🔐 Minlish</h1>
+          <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:14px;">Mã xác thực đăng nhập (MFA)</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:40px;">
+          <h2 style="color:#1a1a2e;font-size:22px;margin:0 0 16px;">Chào bạn, ${name}! 👋</h2>
+          <p style="color:#555;line-height:1.7;margin:0 0 24px;">
+            Bạn đang đăng nhập vào tài khoản Admin. Vì hệ thống bật chế độ bảo mật MFA, vui lòng sử dụng mã OTP dưới đây để hoàn tất đăng nhập:
+          </p>
+          <div style="background:#f8f9ff;border:2px dashed #667eea;border-radius:12px;padding:24px;text-align:center;margin:0 0 24px;">
+            <p style="color:#667eea;font-size:12px;font-weight:600;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Mã xác thực OTP</p>
+            <p style="color:#1a1a2e;font-size:40px;font-weight:800;letter-spacing:8px;margin:0;font-family:monospace;">${otp}</p>
+            <p style="color:#aaa;font-size:13px;margin:8px 0 0;">Mã có hiệu lực trong <strong>5 phút</strong></p>
+          </div>
+          <p style="color:#888;font-size:13px;line-height:1.6;">Nếu bạn không thực hiện yêu cầu này, vui lòng thay đổi mật khẩu của mình ngay lập tức.</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+  </html>
+  `;
+
+  await sendMailAndLog({
+    from: `"Minlish Bảo mật 🔐" <${process.env.MAIL_USER}>`,
+    to,
+    subject: '🔐 Mã xác thực đăng nhập (MFA) - Minlish',
+    html,
+  }, 'MFA Login OTP');
+};
+
+/**
+ * Gửi email OTP đổi mật khẩu MFA
+ */
+export const sendChangePasswordMfaEmail = async (
+  to: string,
+  name: string,
+  otp: string
+): Promise<void> => {
+  const html = `
+  <!DOCTYPE html>
+  <html lang="vi">
+  <head>
+    <meta charset="UTF-8">
+    <title>Mã xác thực đổi mật khẩu (MFA) - Minlish</title>
+  </head>
+  <body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f4f7fe;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:40px auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+      <tr>
+        <td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:40px;text-align:center;">
+          <h1 style="color:#fff;margin:0;font-size:28px;font-weight:700;">🔐 Minlish</h1>
+          <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:14px;">Mã xác thực đổi mật khẩu (MFA)</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:40px;">
+          <h2 style="color:#1a1a2e;font-size:22px;margin:0 0 16px;">Chào bạn, ${name}! 👋</h2>
+          <p style="color:#555;line-height:1.7;margin:0 0 24px;">
+            Bạn đang yêu cầu thay đổi mật khẩu tài khoản Admin. Vui lòng nhập mã OTP dưới đây để hoàn tất việc đổi mật khẩu:
+          </p>
+          <div style="background:#f8f9ff;border:2px dashed #667eea;border-radius:12px;padding:24px;text-align:center;margin:0 0 24px;">
+            <p style="color:#667eea;font-size:12px;font-weight:600;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Mã xác thực OTP</p>
+            <p style="color:#1a1a2e;font-size:40px;font-weight:800;letter-spacing:8px;margin:0;font-family:monospace;">${otp}</p>
+            <p style="color:#aaa;font-size:13px;margin:8px 0 0;">Mã có hiệu lực trong <strong>5 phút</strong></p>
+          </div>
+          <p style="color:#888;font-size:13px;line-height:1.6;">Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email.</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+  </html>
+  `;
+
+  await sendMailAndLog({
+    from: `"Minlish Bảo mật 🔐" <${process.env.MAIL_USER}>`,
+    to,
+    subject: '🔐 Mã xác thực đổi mật khẩu (MFA) - Minlish',
+    html,
+  }, 'MFA Change Password OTP');
+};
+
+/**
+ * Gửi email mật khẩu tạm thời khi Admin reset auth cho User
+ */
+export const sendResetAuthEmail = async (
+  to: string,
+  name: string,
+  tempPassword: string
+): Promise<void> => {
+  const html = `
+  <!DOCTYPE html>
+  <html lang="vi">
+  <head>
+    <meta charset="UTF-8">
+    <title>Mật khẩu tạm thời khôi phục tài khoản - Minlish</title>
+  </head>
+  <body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f4f7fe;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:40px auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+      <tr>
+        <td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:40px;text-align:center;">
+          <h1 style="color:#fff;margin:0;font-size:28px;font-weight:700;">🔑 Minlish</h1>
+          <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:14px;">Khôi phục quyền truy cập tài khoản</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:40px;">
+          <h2 style="color:#1a1a2e;font-size:22px;margin:0 0 16px;">Chào bạn, ${name}! 👋</h2>
+          <p style="color:#555;line-height:1.7;margin:0 0 24px;">
+            Quản trị viên hệ thống đã cập nhật email và cấp lại mật khẩu tạm thời cho tài khoản của bạn. Vui lòng sử dụng thông tin đăng nhập mới bên dưới để truy cập vào hệ thống:
+          </p>
+          <div style="background:#f8f9ff;border-radius:12px;padding:20px;margin:0 0 24px;">
+            <p style="color:#555;margin:0 0 8px;"><strong>Email đăng nhập mới:</strong> <span style="color:#1a1a2e;">${to}</span></p>
+            <p style="color:#555;margin:0;"><strong>Mật khẩu tạm thời:</strong> <span style="color:#667eea;font-family:monospace;font-size:16px;font-weight:700;letter-spacing:1px;">${tempPassword}</span></p>
+          </div>
+          <p style="color:#888;font-size:13px;line-height:1.6;margin:0 0 24px;">
+            Vì lý do bảo mật, vui lòng <strong>đổi lại mật khẩu mới</strong> ngay sau khi đăng nhập thành công tại mục Cài đặt tài khoản.
+          </p>
+          <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/login" 
+             style="display:inline-block;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
+            Đăng nhập ngay →
+          </a>
+        </td>
+      </tr>
+      <tr>
+        <td style="background:#f8f9ff;padding:24px;text-align:center;">
+          <p style="color:#aaa;font-size:13px;margin:0;">
+            © 2025 Minlish. Nếu bạn không có yêu cầu hỗ trợ này từ Admin, hãy liên hệ ngay với chúng tôi.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+  </html>
+  `;
+
+  await sendMailAndLog({
+    from: `"Minlish Hỗ trợ 🔑" <${process.env.MAIL_USER}>`,
+    to,
+    subject: '🔑 Mật khẩu tạm thời khôi phục tài khoản Minlish',
+    html,
+  }, 'Reset user auth temporary password email');
+};
+

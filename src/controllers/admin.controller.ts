@@ -12,6 +12,7 @@ import { VocabularySet } from '../models/VocabularySet';
 import { ModerationLog } from '../models/ModerationLog';
 import { Post } from '../models/Post';
 import { Notification } from '../models/Nofitication';
+import { User } from '../models/User';
 
 /**
  * @swagger
@@ -198,7 +199,10 @@ export const getAdminStatsController = catchAsync(async (_req: Request, res: Res
 export const listPublicSetsController = catchAsync(async (req: Request, res: Response) => {
   const page = req.query.page ? Number(req.query.page) : undefined;
   const limit = req.query.limit ? Number(req.query.limit) : undefined;
-  const result = await adminService.listPublicSets(page, limit);
+  const status = req.query.status as string || undefined;
+  const q = req.query.q as string || undefined;
+  const category = req.query.category as string || undefined;
+  const result = await adminService.listPublicSets(page, limit, status, q, category);
   return sendSuccess(res, 'Public sets fetched successfully', result.data, 200, result.pagination);
 });
 
@@ -429,21 +433,71 @@ export const overridePostModerationController = catchAsync(async (req: Request, 
 
   return sendSuccess(res, `Post moderation status updated to ${status} successfully`);
 });
-
 export const listAllPostsController = catchAsync(async (req: Request, res: Response) => {
   const page = Number(req.query.page) || 1;
   const limit = Number(req.query.limit) || 20;
   const skip = (page - 1) * limit;
+  const tab = req.query.tab as string || 'published';
+  const adminId = req.user!.id;
+  const q = req.query.q as string || undefined;
+  const category = req.query.category as string || undefined;
+
+  let filter: any = {};
+  if (tab === 'published') {
+    filter = { isPublic: true, moderationStatus: 'approved' };
+  } else if (tab === 'drafts') {
+    filter = { author: adminId, isPublic: false };
+  } else if (tab === 'pending') {
+    filter = { isPublic: true, moderationStatus: 'pending' };
+  } else if (tab === 'moderated') {
+    filter = { isPublic: true, moderationStatus: { $in: ['approved', 'rejected'] } };
+  } else {
+    filter = { isPublic: true };
+  }
+
+  if (category) {
+    filter.category = category;
+  }
+
+  if (q) {
+    const cleanQ = q.trim();
+    if (cleanQ) {
+      const matchingUsers = await User.find({
+        $or: [
+          { name: { $regex: cleanQ, $options: 'i' } },
+          { email: { $regex: cleanQ, $options: 'i' } }
+        ]
+      }).select('_id').lean();
+      const userIds = matchingUsers.map((u: any) => u._id);
+
+      filter.$or = [
+        { title: { $regex: cleanQ, $options: 'i' } },
+        { content: { $regex: cleanQ, $options: 'i' } },
+        { excerpt: { $regex: cleanQ, $options: 'i' } },
+        { author: { $in: userIds } }
+      ];
+    }
+  }
 
   const [posts, total] = await Promise.all([
-    Post.find().populate('author', 'name email avatar').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-    Post.countDocuments()
+    Post.find(filter).populate('author', 'name email avatar').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    Post.countDocuments(filter)
   ]);
 
-  return sendSuccess(res, 'All posts fetched successfully for admin', posts, 200, {
+  return sendSuccess(res, 'Posts fetched successfully for admin', posts, 200, {
     page,
     limit,
     total,
     totalPages: Math.ceil(total / limit)
   });
+});
+
+export const resetUserAuthController = catchAsync(async (req: Request, res: Response) => {
+  const adminId = req.user!.id;
+  const { id: targetUserId } = req.params;
+  const { email: newEmail } = req.body;
+
+  await adminService.resetUserAuth(adminId, targetUserId, newEmail);
+
+  return sendSuccess(res, 'User credentials reset successfully and temporary password email sent');
 });

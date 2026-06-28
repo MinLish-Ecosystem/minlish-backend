@@ -34,6 +34,7 @@ export interface IVocabularySet extends Document {
   isPublic: boolean;
   moderationStatus: "pending" | "approved" | "rejected";
   moderationReason: string;
+  flaggedTerms?: string[];
   totalWords: number;
   learnerCount: number;        // Số người đã clone bộ từ này về library
   clonedFrom?: Types.ObjectId; // Ref đến set gốc nếu đây là bản copy
@@ -95,6 +96,10 @@ const VocabularySetSchema = new Schema<IVocabularySet>(
     moderationReason: {
       type: String,
       default: "",
+    },
+    flaggedTerms: {
+      type: [String],
+      default: [],
     },
     totalWords: {
       type: Number,

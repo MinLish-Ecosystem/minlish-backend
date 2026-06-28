@@ -42,5 +42,22 @@ export const adminPaginationSchema = z.object({
   query: z.object({
     page: z.coerce.number().int().min(1, 'Page must be >= 1').optional(),
     limit: z.coerce.number().int().min(1).max(100, 'Limit must be <= 100').optional(),
+    q: z.string().optional(),
+    category: z.string().optional(),
+    status: z.string().optional(),
   }),
 });
+
+// ─── Reset Auth Schema ───────────────────────────────────────────────────────
+
+export const resetUserAuthSchema = z.object({
+  params: z.object({
+    id: objectIdSchema('id'),
+  }),
+  body: z.object({
+    email: z.string({ message: 'Email là bắt buộc' })
+      .trim()
+      .email('Email không đúng định dạng'),
+  }),
+});
+

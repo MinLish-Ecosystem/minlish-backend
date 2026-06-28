@@ -23,6 +23,23 @@ function isTextOffensiveOrSpam(text: string): boolean {
   return vulgarRegex.test(text) || gibberishRegex.test(text) || repeatCharRegex.test(text);
 }
 
+function getViolatingTerms(text: string): string[] {
+  if (!text) return [];
+  const terms: string[] = [];
+  const cleanText = text.trim();
+  
+  const vulgarMatch = cleanText.match(vulgarRegex);
+  if (vulgarMatch) terms.push(vulgarMatch[0]);
+  
+  const gibMatch = cleanText.match(gibberishRegex);
+  if (gibMatch) terms.push(gibMatch[0]);
+  
+  const repMatch = cleanText.match(repeatCharRegex);
+  if (repMatch) terms.push(repMatch[0]);
+  
+  return terms;
+}
+
 /**
  * Lọc thô cục bộ các bộ từ vựng.
  * Nếu bộ từ vi phạm rõ ràng, tự động reject ngay mà không cần gọi Gemini API.
@@ -31,19 +48,31 @@ export function checkLocalRules(
   setName: string,
   description: string,
   words: string[]
-): { isViolating: boolean; reason: string } {
+): { isViolating: boolean; reason: string; flaggedTerms: string[] } {
   if (isTextOffensiveOrSpam(setName)) {
-    return { isViolating: true, reason: 'Tên bộ từ chứa từ ngữ thô tục hoặc ký tự vô nghĩa (bộ lọc cục bộ).' };
+    return {
+      isViolating: true,
+      reason: 'Tên bộ từ chứa từ ngữ thô tục hoặc ký tự vô nghĩa (bộ lọc cục bộ).',
+      flaggedTerms: getViolatingTerms(setName),
+    };
   }
   if (isTextOffensiveOrSpam(description)) {
-    return { isViolating: true, reason: 'Mô tả bộ từ chứa từ ngữ thô tục hoặc ký tự vô nghĩa (bộ lọc cục bộ).' };
+    return {
+      isViolating: true,
+      reason: 'Mô tả bộ từ chứa từ ngữ thô tục hoặc ký tự vô nghĩa (bộ lọc cục bộ).',
+      flaggedTerms: getViolatingTerms(description),
+    };
   }
   for (const word of words) {
     if (isTextOffensiveOrSpam(word)) {
-      return { isViolating: true, reason: `Từ vựng "${word}" chứa nội dung thô tục hoặc spam (bộ lọc cục bộ).` };
+      return {
+        isViolating: true,
+        reason: `Từ vựng "${word}" chứa nội dung thô tục hoặc spam (bộ lọc cục bộ).`,
+        flaggedTerms: [word],
+      };
     }
   }
-  return { isViolating: false, reason: '' };
+  return { isViolating: false, reason: '', flaggedTerms: [] };
 }
 
 // ─── Gemini AI Batch Moderation ───────────────────────────────────────────────
@@ -112,6 +141,7 @@ export async function runAutoModerationBatch(adminId?: string): Promise<{ proces
         wordsCount: setData.words.length,
         status: 'rejected',
         reason: localCheck.reason,
+        flaggedTerms: localCheck.flaggedTerms,
       });
     } else {
       geminiQueue.push(setData);
@@ -144,6 +174,7 @@ export async function runAutoModerationBatch(adminId?: string): Promise<{ proces
                 wordsCount: originalData.words.length,
                 status: res.status,
                 reason: res.reason,
+                flaggedTerms: res.flaggedTerms || [],
               });
             }
           }
@@ -169,6 +200,7 @@ export async function runAutoModerationBatch(adminId?: string): Promise<{ proces
       $set: {
         moderationStatus: res.status,
         moderationReason: res.reason,
+        flaggedTerms: res.flaggedTerms || [],
       }
     });
 
@@ -188,6 +220,32 @@ export async function runAutoModerationBatch(adminId?: string): Promise<{ proces
       results: results,
     });
     console.log(`[Auto Moderation] Finished batch. Processed: ${results.length}. Approved: ${approvedCount}. Rejected: ${rejectedCount}.`);
+
+    // 8. Notify all admin users about the moderation batch result
+    try {
+      const admins = await User.find({ role: 'admin', isActive: true }).select('_id').lean();
+      if (admins.length > 0) {
+        const runType = adminId ? 'Manual' : 'Auto';
+        await Notification.insertMany(
+          admins.map((admin: any) => ({
+            userId: admin._id,
+            type: 'ai_moderation',
+            title: `🤖 AI Moderation Complete (Vocabulary Sets)`,
+            message: `${runType} batch processed ${results.length} vocabulary sets — ✅ ${approvedCount} approved, ❌ ${results.length - approvedCount} rejected.`,
+            isRead: false,
+            data: {
+              moderationType: 'vocab',
+              processed: results.length,
+              approved: approvedCount,
+              rejected: results.length - approvedCount,
+              runType: adminId ? 'manual' : 'auto',
+            },
+          }))
+        );
+      }
+    } catch (notifErr) {
+      console.error('[Auto Moderation] Failed to send admin notifications:', notifErr);
+    }
   }
 
   return {
@@ -203,7 +261,7 @@ export async function runAutoModerationBatch(adminId?: string): Promise<{ proces
 async function moderateWithGemini(
   sets: IPendingSetData[],
   guidelines: string
-): Promise<Array<{ id: string; status: 'approved' | 'rejected'; reason: string }>> {
+): Promise<Array<{ id: string; status: 'approved' | 'rejected'; reason: string; flaggedTerms?: string[] }>> {
   
   const prompt = `
 You are a content moderation AI assistant for the MinLish English learning platform.
@@ -219,6 +277,7 @@ For each item, output:
 - "id": the exact ID of the vocabulary set provided in the input.
 - "status": either "approved" or "rejected".
 - "reason": A short, clear explanation in Vietnamese (1-2 sentences) of why it was approved or rejected (e.g. "Bộ từ hợp lệ, nội dung sạch và bổ ích.", "Bị từ chối vì chứa từ ngữ tục tĩu: ...", "Bị từ chối vì mô tả là nội dung quảng cáo rác.").
+- "flaggedTerms": An array of strings containing the exact words, phrases, or sentences from the input that violated the guidelines (empty array if approved).
 
 INPUT SETS TO MODERATE:
 ${JSON.stringify(sets.map(s => ({ id: s.setId, name: s.setName, description: s.description, words: s.words })), null, 2)}
@@ -232,8 +291,12 @@ ${JSON.stringify(sets.map(s => ({ id: s.setId, name: s.setName, description: s.d
         id: { type: 'STRING' },
         status: { type: 'STRING', enum: ['approved', 'rejected'] },
         reason: { type: 'STRING' },
+        flaggedTerms: {
+          type: 'ARRAY',
+          items: { type: 'STRING' }
+        }
       },
-      required: ['id', 'status', 'reason'],
+      required: ['id', 'status', 'reason', 'flaggedTerms'],
     },
   };
 
@@ -270,7 +333,7 @@ ${JSON.stringify(sets.map(s => ({ id: s.setId, name: s.setName, description: s.d
     throw new Error('Empty response from Gemini API');
   }
 
-  return JSON.parse(rawText) as Array<{ id: string; status: 'approved' | 'rejected'; reason: string }>;
+  return JSON.parse(rawText) as Array<{ id: string; status: 'approved' | 'rejected'; reason: string; flaggedTerms?: string[] }>;
 }
 
 /**
@@ -344,7 +407,7 @@ export async function runAutoModerationPostsBatch(adminId?: string): Promise<{ p
 
   console.log(`[Auto Moderation] Found ${pendingPosts.length} pending public posts. Moderating...`);
 
-  const results: Array<{ id: string; status: 'approved' | 'rejected'; reason: string; authorId: string; title: string }> = [];
+  const results: Array<{ id: string; status: 'approved' | 'rejected'; reason: string; authorId: string; title: string; flaggedTerms?: string[] }> = [];
   const geminiQueue: Array<{ id: string; title: string; content: string; authorId: string }> = [];
 
   // Local rule filtering first (rough filter)
@@ -359,12 +422,17 @@ export async function runAutoModerationPostsBatch(adminId?: string): Promise<{ p
         ? 'Tiêu đề bài viết chứa từ ngữ thô tục hoặc ký tự vô nghĩa (bộ lọc cục bộ).'
         : 'Nội dung bài viết chứa từ ngữ thô tục hoặc ký tự vô nghĩa (bộ lọc cục bộ).';
       
+      const flaggedTerms = isViolatingTitle
+        ? getViolatingTerms(post.title)
+        : getViolatingTerms(post.content);
+
       results.push({
         id: post._id.toString(),
         status: 'rejected',
         reason,
         authorId: authorDoc?._id?.toString() || '',
-        title: post.title
+        title: post.title,
+        flaggedTerms
       });
     } else {
       geminiQueue.push({
@@ -391,7 +459,8 @@ export async function runAutoModerationPostsBatch(adminId?: string): Promise<{ p
               status: res.status,
               reason: res.reason,
               authorId: original.authorId,
-              title: original.title
+              title: original.title,
+              flaggedTerms: res.flaggedTerms || []
             });
           }
         }
@@ -413,7 +482,8 @@ export async function runAutoModerationPostsBatch(adminId?: string): Promise<{ p
     await Post.findByIdAndUpdate(res.id, {
       $set: {
         moderationStatus: res.status,
-        moderationReason: res.reason
+        moderationReason: res.reason,
+        flaggedTerms: res.flaggedTerms || []
       }
     });
 
@@ -441,6 +511,35 @@ export async function runAutoModerationPostsBatch(adminId?: string): Promise<{ p
   }
 
   console.log(`[Auto Moderation Posts] Finished batch. Processed: ${results.length}. Approved: ${approvedCount}. Rejected: ${rejectedCount}.`);
+
+  // Notify all admin users about the posts moderation batch result
+  if (results.length > 0) {
+    try {
+      const admins = await User.find({ role: 'admin', isActive: true }).select('_id').lean();
+      if (admins.length > 0) {
+        const runType = adminId ? 'Manual' : 'Auto';
+        await Notification.insertMany(
+          admins.map((admin: any) => ({
+            userId: admin._id,
+            type: 'ai_moderation',
+            title: `🤖 AI Moderation Complete (Community Posts)`,
+            message: `${runType} batch processed ${results.length} posts — ✅ ${approvedCount} approved, ❌ ${results.length - approvedCount} rejected.`,
+            isRead: false,
+            data: {
+              moderationType: 'post',
+              processed: results.length,
+              approved: approvedCount,
+              rejected: results.length - approvedCount,
+              runType: adminId ? 'manual' : 'auto',
+            },
+          }))
+        );
+      }
+    } catch (notifErr) {
+      console.error('[Auto Moderation Posts] Failed to send admin notifications:', notifErr);
+    }
+  }
+
   return {
     processed: results.length,
     approved: approvedCount,
@@ -451,7 +550,7 @@ export async function runAutoModerationPostsBatch(adminId?: string): Promise<{ p
 async function moderatePostsWithGemini(
   posts: Array<{ id: string; title: string; content: string }>,
   guidelines: string
-): Promise<Array<{ id: string; status: 'approved' | 'rejected'; reason: string }>> {
+): Promise<Array<{ id: string; status: 'approved' | 'rejected'; reason: string; flaggedTerms?: string[] }>> {
   const prompt = `
 You are a content moderation AI assistant for the MinLish English learning platform.
 Your task is to moderate the following community articles submitted by users for publishing.
@@ -466,6 +565,7 @@ For each item, output:
 - "id": the exact ID of the article provided in the input.
 - "status": either "approved" or "rejected".
 - "reason": A short, clear explanation in Vietnamese (1-2 sentences) of why it was approved or rejected (e.g. "Bài viết hợp lệ, chia sẻ kiến thức hữu ích.", "Bị từ chối vì chứa ngôn từ kích động thô tục.", "Bị từ chối vì nội dung không liên quan đến học tập hoặc chia sẻ tiếng Anh.").
+- "flaggedTerms": An array of strings containing the exact words, phrases, or sentences from the input that violated the guidelines (empty array if approved).
 
 INPUT ARTICLES TO MODERATE:
 ${JSON.stringify(posts.map(p => ({ id: p.id, title: p.title, content: p.content })), null, 2)}
@@ -479,8 +579,12 @@ ${JSON.stringify(posts.map(p => ({ id: p.id, title: p.title, content: p.content 
         id: { type: 'STRING' },
         status: { type: 'STRING', enum: ['approved', 'rejected'] },
         reason: { type: 'STRING' },
+        flaggedTerms: {
+          type: 'ARRAY',
+          items: { type: 'STRING' }
+        }
       },
-      required: ['id', 'status', 'reason'],
+      required: ['id', 'status', 'reason', 'flaggedTerms'],
     },
   };
 
@@ -517,5 +621,5 @@ ${JSON.stringify(posts.map(p => ({ id: p.id, title: p.title, content: p.content 
     throw new Error('Empty response from Gemini API');
   }
 
-  return JSON.parse(rawText) as Array<{ id: string; status: 'approved' | 'rejected'; reason: string }>;
+  return JSON.parse(rawText) as Array<{ id: string; status: 'approved' | 'rejected'; reason: string; flaggedTerms?: string[] }>;
 }

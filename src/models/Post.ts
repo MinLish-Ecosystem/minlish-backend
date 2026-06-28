@@ -15,6 +15,7 @@ export interface IPost extends Document {
   isPublic: boolean;
   moderationStatus: 'pending' | 'approved' | 'rejected';
   moderationReason: string;
+  flaggedTerms?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -89,6 +90,10 @@ const PostSchema = new Schema<IPost>(
     moderationReason: {
       type: String,
       default: '',
+    },
+    flaggedTerms: {
+      type: [String],
+      default: [],
     },
   },
   { timestamps: true }

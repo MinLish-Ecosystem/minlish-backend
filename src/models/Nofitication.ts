@@ -32,6 +32,8 @@ const NotificationSchema = new Schema<INotification>(
         "streak_milestone",
         "achievement",
         "system",
+        "report",
+        "ai_moderation",
       ],
       required: true,
     },

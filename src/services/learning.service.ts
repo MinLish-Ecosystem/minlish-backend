@@ -125,7 +125,8 @@ export async function getDueSummary(userId: string): Promise<DueSummaryResponse>
     dueReviewsCount: actualReview,
     totalDueCount: actualNew + actualReview,
     rawNewWordsCount,
-    rawDueReviewsCount: dueReviewsCount
+    rawDueReviewsCount: dueReviewsCount,
+    dailyGoal
   };
 }
 

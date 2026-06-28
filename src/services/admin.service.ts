@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import crypto from 'crypto';
 import { User } from '../models/User';
 import { VocabularySet } from '../models/VocabularySet';
 import { Word } from '../models/Word';
@@ -12,6 +13,7 @@ import { AdminAuditLog } from '../models/AdminAuditLog';
 import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
+import { sendResetAuthEmail } from './mail.service';
 
 export async function listUsers(page = 1, limit = 20) {
   const skip = (page - 1) * limit;
@@ -98,13 +100,104 @@ export async function getAdminStats() {
   return { totalUsers, activeUsers, bannedUsers, totalSets };
 }
 
-export async function listPublicSets(page = 1, limit = 20) {
+export async function listPublicSets(page = 1, limit = 20, status?: string, q?: string, category?: string) {
   const skip = (page - 1) * limit;
+  const filter: any = { isPublic: true, isDeleted: { $ne: true } };
+  
+  if (status === 'moderated') {
+    filter.moderationStatus = { $in: ['approved', 'rejected'] };
+  } else {
+    filter.moderationStatus = 'approved';
+  }
+
+  if (category) {
+    filter.category = category;
+  }
+
+  if (q) {
+    const cleanQ = q.trim();
+    if (cleanQ) {
+      filter.$or = [
+        { name: { $regex: cleanQ, $options: "i" } },
+        { description: { $regex: cleanQ, $options: "i" } },
+        { tags: { $in: [new RegExp(cleanQ, "i")] } }
+      ];
+    }
+  }
+
   const [data, total] = await Promise.all([
-    VocabularySet.find({ isPublic: true, isDeleted: { $ne: true } }).sort({ learnerCount: -1 }).skip(skip).limit(limit).lean(),
-    VocabularySet.countDocuments({ isPublic: true, isDeleted: { $ne: true } }),
+    VocabularySet.find(filter).sort({ learnerCount: -1 }).skip(skip).limit(limit).lean(),
+    VocabularySet.countDocuments(filter),
   ]);
-  return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+
+  const mappedData = data.map((s: any) => ({
+    id: s._id.toString(),
+    userId: s.userId ? s.userId.toString() : undefined,
+    name: s.name,
+    description: s.description,
+    coverUrl: s.coverUrl ?? "",
+    category: s.category,
+    level: s.level,
+    colorTheme: s.colorTheme,
+    tags: s.tags ?? [],
+    isPublic: Boolean(s.isPublic),
+    moderationStatus: s.moderationStatus || 'approved',
+    moderationReason: s.moderationReason || '',
+    flaggedTerms: s.flaggedTerms ?? [],
+    totalWords: s.totalWords ?? 0,
+    learnerCount: s.learnerCount ?? 0,
+    clonedFrom: s.clonedFrom ? s.clonedFrom.toString() : undefined,
+    createdAt: new Date(s.createdAt).toISOString(),
+    updatedAt: new Date(s.updatedAt).toISOString(),
+  }));
+
+  return { data: mappedData, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+}
+
+export async function resetUserAuth(adminId: string, targetUserId: string, newEmail: string) {
+  const user = await User.findById(targetUserId);
+  if (!user) {
+    throw new AppError('Không tìm thấy người dùng', HttpStatus.NOT_FOUND);
+  }
+
+  if (user.role === 'admin') {
+    throw new AppError('Không thể khôi phục tài khoản của Admin', HttpStatus.FORBIDDEN);
+  }
+
+  const before = { email: user.email, isVerified: user.isVerified };
+
+  // Nếu thay đổi email, kiểm tra xem email mới đã được sử dụng chưa
+  const emailChanged = newEmail.trim().toLowerCase() !== user.email.toLowerCase();
+  if (emailChanged) {
+    const existing = await User.findOne({ email: newEmail.trim().toLowerCase() });
+    if (existing) {
+      throw new AppError('Email này đã được sử dụng bởi một tài khoản khác', HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+    }
+    user.email = newEmail.trim().toLowerCase();
+  }
+
+  // Tạo mật khẩu tạm thời dài 8 ký tự
+  const tempPassword = crypto.randomBytes(4).toString('hex');
+  user.password = tempPassword;
+  
+  // Xác minh email luôn vì admin đã trực tiếp reset
+  user.isVerified = true;
+
+  await user.save();
+
+  // Gửi email cho người dùng
+  await sendResetAuthEmail(user.email, user.name, tempPassword);
+
+  // Ghi nhật ký hệ thống (Audit Log)
+  await AdminAuditLog.create({
+    adminId: new Types.ObjectId(adminId),
+    action: 'reset_user_auth',
+    targetId: new Types.ObjectId(targetUserId),
+    targetType: 'user',
+    reason: `Reset email to: ${user.email} and reset password.`,
+    before,
+    after: { email: user.email, isVerified: user.isVerified }
+  });
 }
 
 export async function unpublishSet(adminId: string, setId: string, reason?: string) {

@@ -33,25 +33,26 @@ router.post('/', verifyToken, catchAsync(async (req: Request, res: Response) => 
 
   const report = await UserReport.create({ userId, category, subject: subject.trim(), message: message.trim() });
 
-  // Find admin users and notify all of them via system notification
+  // Find admin users and notify all of them via report notification
   const admins = await User.find({ role: 'admin', isActive: true }).select('_id').lean();
   const user = await User.findById(userId).select('name email').lean();
-  const senderName = (user as any)?.name || 'Người dùng';
+  const senderName = (user as any)?.name || 'User';
+  const senderEmail = (user as any)?.email || '';
 
   if (admins.length > 0) {
     await Notification.insertMany(
       admins.map((admin: any) => ({
         userId: admin._id,
-        type: 'system',
-        title: `📋 Báo cáo mới: ${category}`,
-        message: `${senderName} gửi: "${subject.trim().substring(0, 80)}${subject.trim().length > 80 ? '…' : ''}"`,
+        type: 'report',
+        title: `📋 New Report: ${category}`,
+        message: `${senderName} (${senderEmail}) sent: "${subject.trim().substring(0, 80)}${subject.trim().length > 80 ? '…' : ''}"`,
         isRead: false,
-        data: { reportId: report._id.toString(), category },
+        data: { reportId: report._id.toString(), category, senderName, senderEmail, subject: subject.trim(), message: message.trim() },
       }))
     );
   }
 
-  return sendSuccess(res, 'Báo cáo đã được gửi thành công. Cảm ơn bạn!', { reportId: report._id }, 201);
+  return sendSuccess(res, 'Report submitted successfully. Thank you!', { reportId: report._id }, 201);
 }));
 
 // ─── GET /api/v1/reports — Admin gets all reports ──────────────────────────

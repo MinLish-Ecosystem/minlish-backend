@@ -5,6 +5,7 @@ import {
   refreshTokenService,
   logoutUser,
   verifyEmailOTP,
+  verifyMfaLogin,
 } from "../services/auth.service";
 import { sendSuccess } from "../utils/response.util";
 import { catchAsync } from "../utils/catchAsync";
@@ -47,6 +48,11 @@ import { ErrorCodes } from "../constants/errorCodes";
 export const login = catchAsync(async (req: Request, res: Response) => {
   const result = await loginUser(req.body);
   sendSuccess(res, "Login successful", result);
+});
+
+export const verifyMfa = catchAsync(async (req: Request, res: Response) => {
+  const result = await verifyMfaLogin(req.body);
+  sendSuccess(res, "MFA login verification successful", result);
 });
 
 /**

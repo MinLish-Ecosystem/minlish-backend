@@ -6,10 +6,12 @@ import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
 import { getOrCreateSystemConfig, SystemConfig } from '../models/SystemConfig';
-import { runAutoModerationBatch, manualOverrideModeration } from '../services/moderation.service';
+import { runAutoModerationBatch, runAutoModerationPostsBatch, manualOverrideModeration } from '../services/moderation.service';
 import { rescheduleModerationJob } from '../services/moderation.worker';
 import { VocabularySet } from '../models/VocabularySet';
 import { ModerationLog } from '../models/ModerationLog';
+import { Post } from '../models/Post';
+import { Notification } from '../models/Nofitication';
 
 /**
  * @swagger
@@ -352,6 +354,23 @@ export const overrideModerationController = catchAsync(async (req: Request, res:
   }
 
   await manualOverrideModeration(adminId, setId, status, reason);
+
+  // Send Notification
+  const set = await VocabularySet.findById(setId);
+  if (set) {
+    const title = status === 'approved' ? 'Bộ từ vựng đã được duyệt' : 'Bộ từ vựng bị từ chối';
+    const message = status === 'approved'
+      ? `Bộ từ vựng "${set.name}" của bạn đã được duyệt và đăng công khai.`
+      : `Bộ từ vựng "${set.name}" bị từ chối công khai. Lý do: ${reason}`;
+    await Notification.create({
+      userId: set.userId,
+      type: 'system',
+      title,
+      message,
+      isRead: false,
+    });
+  }
+
   return sendSuccess(res, `Set moderation status updated to ${status} successfully`);
 });
 
@@ -360,5 +379,71 @@ export const runAutoModerationController = catchAsync(async (req: Request, res: 
   console.log(`[Admin] Manual moderation run triggered by admin ${adminId}`);
   
   const stats = await runAutoModerationBatch(adminId);
-  return sendSuccess(res, 'Auto-moderation batch run completed successfully', stats);
+  const postStats = await runAutoModerationPostsBatch(adminId);
+  
+  return sendSuccess(res, 'Auto-moderation batch run completed successfully', {
+    sets: stats,
+    posts: postStats
+  });
+});
+
+export const getPendingModerationPostsController = catchAsync(async (_req: Request, res: Response) => {
+  const pendingPosts = await Post.find({
+    isPublic: true,
+    moderationStatus: 'pending'
+  }).populate('author', 'name email avatar').sort({ createdAt: -1 }).lean();
+
+  return sendSuccess(res, 'Pending posts fetched successfully', pendingPosts);
+});
+
+export const overridePostModerationController = catchAsync(async (req: Request, res: Response) => {
+  const adminId = (req.user?._id as any)?.toString();
+  const { postId, status, reason } = req.body;
+
+  if (!postId || !status) {
+    throw new AppError('postId and status are required', HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED);
+  }
+
+  const post = await Post.findById(postId);
+  if (!post) {
+    throw new AppError('Post not found', HttpStatus.NOT_FOUND);
+  }
+
+  post.moderationStatus = status;
+  post.moderationReason = reason || '';
+  await post.save();
+
+  // Create system notification for the user
+  const title = status === 'approved' ? 'Bài viết cộng đồng đã được duyệt' : 'Bài viết cộng đồng bị từ chối';
+  const message = status === 'approved'
+    ? `Bài viết "${post.title}" của bạn đã được duyệt và đăng công khai.`
+    : `Bài viết "${post.title}" bị từ chối công khai. Lý do: ${reason || 'Không có lý do cụ thể'}`;
+
+  await Notification.create({
+    userId: post.author,
+    type: 'system',
+    title,
+    message,
+    isRead: false,
+  });
+
+  return sendSuccess(res, `Post moderation status updated to ${status} successfully`);
+});
+
+export const listAllPostsController = catchAsync(async (req: Request, res: Response) => {
+  const page = Number(req.query.page) || 1;
+  const limit = Number(req.query.limit) || 20;
+  const skip = (page - 1) * limit;
+
+  const [posts, total] = await Promise.all([
+    Post.find().populate('author', 'name email avatar').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    Post.countDocuments()
+  ]);
+
+  return sendSuccess(res, 'All posts fetched successfully for admin', posts, 200, {
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit)
+  });
 });

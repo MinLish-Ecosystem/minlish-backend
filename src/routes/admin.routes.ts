@@ -24,6 +24,9 @@ import {
 	getModerationLogsController,
 	overrideModerationController,
 	runAutoModerationController,
+	getPendingModerationPostsController,
+	overridePostModerationController,
+	listAllPostsController,
 } from '../controllers/admin.controller';
 
 /**
@@ -363,5 +366,10 @@ router.get('/moderation/pending', getPendingModerationSetsController);
 router.get('/moderation/logs', getModerationLogsController);
 router.put('/moderation/override', overrideModerationController);
 router.post('/moderation/run', runAutoModerationController);
+
+// Post Moderation & Management
+router.get('/posts', listAllPostsController);
+router.get('/moderation/posts/pending', getPendingModerationPostsController);
+router.put('/moderation/posts/override', overridePostModerationController);
 
 export default router;

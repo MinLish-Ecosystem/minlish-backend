@@ -68,6 +68,7 @@ export interface SetProgressInfo {
 
 export interface VocabSetResponse {
   id: string;
+  userId?: string;
   name: string;
   description?: string;
   coverUrl?: string;
@@ -76,6 +77,8 @@ export interface VocabSetResponse {
   colorTheme: ColorTheme;
   tags: string[];
   isPublic: boolean;
+  moderationStatus?: 'pending' | 'approved' | 'rejected';
+  moderationReason?: string;
   totalWords: number;
   learnerCount: number;
   clonedFrom?: string;

@@ -93,7 +93,7 @@ export async function getAdminStats() {
     User.countDocuments(),
     User.countDocuments({ isActive: true }),
     User.countDocuments({ isActive: false }),
-    VocabularySet.countDocuments({ isDeleted: { $ne: true } }),
+    VocabularySet.countDocuments({ isPublic: true, moderationStatus: 'approved', isDeleted: { $ne: true } }),
   ]);
   return { totalUsers, activeUsers, bannedUsers, totalSets };
 }

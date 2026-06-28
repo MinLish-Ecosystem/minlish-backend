@@ -57,19 +57,38 @@ function estimateLevel(mastered: number, accuracy: number): { estimated: string;
 /**
  * GET /stats/dashboard — Tổng hợp stats chính: streak, mastery, accuracy, timeSpent
  */
-export async function getDashboardStats(userId: string) {
+export async function getDashboardStats(userId: string, days?: number) {
   const userObjectId = new Types.ObjectId(userId);
   const now = new Date();
   const todayMidnight = new Date(now);
   todayMidnight.setHours(0, 0, 0, 0);
 
-  const [masteredCount, totals, recentStats, todayStats, dueCount, profile] = await Promise.all([
-    // Số từ đã mastered
-    LearningProgress.countDocuments({ userId: userObjectId, status: 'mastered' }),
+  let since: Date | null = null;
+  if (days && days > 0) {
+    since = new Date();
+    since.setDate(since.getDate() - (days - 1));
+    since.setHours(0, 0, 0, 0);
+  }
 
-    // Tổng review, correct, timeSpent, newWords từ tất cả DailyStats
+  // Build match conditions
+  const dailyStatsMatch: any = { userId: userObjectId };
+  const progressMatch: any = { userId: userObjectId };
+
+  if (since) {
+    dailyStatsMatch.date = { $gte: since };
+    progressMatch.updatedAt = { $gte: since };
+  }
+
+  const [masteredCount, totals, recentStats, todayStats, dueCount, profile, totalWordsLearnedCount] = await Promise.all([
+    // Số từ đã mastered trong khoảng thời gian (hoặc all-time)
+    LearningProgress.countDocuments({ 
+      ...progressMatch,
+      status: 'mastered' 
+    }),
+
+    // Tổng review, correct, timeSpent, newWords từ DailyStats trong khoảng thời gian (hoặc all-time)
     DailyStats.aggregate([
-      { $match: { userId: userObjectId } },
+      { $match: dailyStatsMatch },
       {
         $group: {
           _id: null,
@@ -102,6 +121,12 @@ export async function getDashboardStats(userId: string) {
 
     // User profile để lấy chỉ tiêu dailyGoal, reviewPerDay
     UserProfile.findOne({ userId: userObjectId }).lean(),
+
+    // Tổng số từ đã chuyển sang trạng thái non new trong khoảng thời gian (hoặc all-time)
+    LearningProgress.countDocuments({
+      ...progressMatch,
+      status: { $ne: 'new' }
+    }),
   ]);
 
   const { current: currentStreak, longest: longestStreak } = calcStreak(recentStats);
@@ -119,7 +144,7 @@ export async function getDashboardStats(userId: string) {
 
   return {
     streak: { current: currentStreak, longest: longestStreak },
-    totalWordsLearned: totals[0]?.totalNew ?? 0,
+    totalWordsLearned: totalWordsLearnedCount,
     masteredWords: masteredCount,
     totalReviews,
     overallAccuracy: accuracy,
@@ -253,7 +278,7 @@ export async function getMasteryDistribution(userId: string) {
 export async function getHeatmap(userId: string) {
   const userObjectId = new Types.ObjectId(userId);
   const since = new Date();
-  since.setDate(since.getDate() - 89); // 90 ngày kể cả hôm nay
+  since.setDate(since.getDate() - 364); // 365 ngày kể cả hôm nay
   since.setHours(0, 0, 0, 0);
 
   const rawStats = await DailyStats.find({

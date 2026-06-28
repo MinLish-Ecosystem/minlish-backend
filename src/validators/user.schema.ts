@@ -54,3 +54,25 @@ export const updateLearningProfileSchema = z.object({
     }).optional(),
   }),
 });
+
+export const changePasswordSchema = z.object({
+  body: z.object({
+    oldPassword: z.string({ message: 'Current password is required' })
+      .min(6, 'Password must be at least 6 characters'),
+    newPassword: z.string({ message: 'New password is required' })
+      .min(6, 'Password must be at least 6 characters'),
+  }),
+});
+
+export const verifyChangePasswordSchema = z.object({
+  body: z.object({
+    oldPassword: z.string({ message: 'Current password is required' })
+      .min(6, 'Password must be at least 6 characters'),
+    newPassword: z.string({ message: 'New password is required' })
+      .min(6, 'Password must be at least 6 characters'),
+    otp: z.string({ message: 'OTP is required' })
+      .min(4, 'OTP must be at least 4 characters')
+      .max(8, 'OTP cannot exceed 8 characters')
+      .regex(/^\d+$/, 'OTP must contain only numbers'),
+  }),
+});

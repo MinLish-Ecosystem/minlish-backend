@@ -48,9 +48,23 @@ export const getPosts = catchAsync(async (req: Request, res: Response) => {
       matchStage.readingTime = { $gt: 10 };
     }
   }
-  if (author && mongoose.Types.ObjectId.isValid(author)) {
-    matchStage.author = new mongoose.Types.ObjectId(author);
+
+  const isManager = req.query.manage === 'true';
+  if (isManager && currentUserId) {
+    matchStage.author = new mongoose.Types.ObjectId(currentUserId);
+  } else {
+    if (author && mongoose.Types.ObjectId.isValid(author)) {
+      matchStage.author = new mongoose.Types.ObjectId(author);
+      if (author !== currentUserId) {
+        matchStage.isPublic = true;
+        matchStage.moderationStatus = 'approved';
+      }
+    } else {
+      matchStage.isPublic = true;
+      matchStage.moderationStatus = 'approved';
+    }
   }
+
   if (bookmarked === 'true' && currentUserId && mongoose.Types.ObjectId.isValid(currentUserId)) {
     matchStage.bookmarks = new mongoose.Types.ObjectId(currentUserId);
   }
@@ -105,6 +119,9 @@ export const getPosts = catchAsync(async (req: Request, res: Response) => {
         likes: 1,
         bookmarks: 1,
         isFeatured: 1,
+        isPublic: 1,
+        moderationStatus: 1,
+        moderationReason: 1,
         createdAt: 1,
         updatedAt: 1,
         author: {
@@ -149,7 +166,8 @@ export const getPosts = catchAsync(async (req: Request, res: Response) => {
  */
 export const createPost = catchAsync(async (req: Request, res: Response) => {
   const userId = req.user!.id;
-  const { title, content, category, difficulty, coverImage, isFeatured } = req.body;
+  const userRole = req.user!.role;
+  const { title, content, category, difficulty, coverImage, isFeatured, isPublic } = req.body;
 
   // Auto-calculate reading time: avg 200 words/min
   const wordCount = content.split(/\s+/).filter(Boolean).length;
@@ -158,6 +176,14 @@ export const createPost = catchAsync(async (req: Request, res: Response) => {
   // Generate excerpt if not provided
   const cleanContent = content.replace(/<[^>]*>/g, ''); // strip HTML if any
   const excerpt = cleanContent.length > 180 ? `${cleanContent.substring(0, 180)}...` : cleanContent;
+
+  const postIsPublic = isPublic === true;
+  let moderationStatus: 'pending' | 'approved' | 'rejected' = 'approved';
+  if (userRole === 'admin') {
+    moderationStatus = 'approved';
+  } else if (postIsPublic) {
+    moderationStatus = 'pending';
+  }
 
   const post = await Post.create({
     title,
@@ -169,6 +195,8 @@ export const createPost = catchAsync(async (req: Request, res: Response) => {
     readingTime,
     author: userId,
     isFeatured: isFeatured || false,
+    isPublic: postIsPublic,
+    moderationStatus,
     likes: [],
     bookmarks: [],
   });
@@ -410,7 +438,8 @@ export const toggleLikeComment = catchAsync(async (req: Request, res: Response) 
 export const updatePost = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   const userId = req.user!.id;
-  const { title, content, category, difficulty, coverImage, isFeatured } = req.body;
+  const userRole = req.user!.role;
+  const { title, content, category, difficulty, coverImage, isFeatured, isPublic } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return sendError(res, 'Invalid post ID', HttpStatus.BAD_REQUEST);
@@ -421,8 +450,8 @@ export const updatePost = catchAsync(async (req: Request, res: Response) => {
     return sendError(res, 'Post not found', HttpStatus.NOT_FOUND);
   }
 
-  // Kiểm tra quyền: chỉ tác giả bài viết được phép chỉnh sửa
-  if (post.author.toString() !== userId.toString()) {
+  // Kiểm tra quyền: tác giả hoặc admin
+  if (post.author.toString() !== userId.toString() && userRole !== 'admin') {
     return sendError(res, 'You do not have permission to edit this post', HttpStatus.FORBIDDEN);
   }
 
@@ -441,6 +470,22 @@ export const updatePost = catchAsync(async (req: Request, res: Response) => {
   if (difficulty !== undefined) post.difficulty = difficulty;
   if (coverImage !== undefined) post.coverImage = coverImage;
   if (isFeatured !== undefined) post.isFeatured = isFeatured;
+
+  if (isPublic !== undefined) {
+    post.isPublic = isPublic;
+    if (userRole !== 'admin') {
+      if (isPublic === true) {
+        post.moderationStatus = 'pending';
+      }
+    } else {
+      post.moderationStatus = 'approved';
+    }
+  } else {
+    // If user edited content/title while public, reset moderation status to pending
+    if (userRole !== 'admin' && post.isPublic === true && (content !== undefined || title !== undefined)) {
+      post.moderationStatus = 'pending';
+    }
+  }
 
   await post.save();
 

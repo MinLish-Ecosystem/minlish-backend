@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { getProfile, updateProfile, requestEmailChangeController, confirmEmailChangeController, getLearningProfileController, updateLearningProfileController } from '../controllers/user.controller';
+import { getProfile, updateProfile, requestEmailChangeController, confirmEmailChangeController, getLearningProfileController, updateLearningProfileController, changePassword, verifyChangePassword } from '../controllers/user.controller';
 import { verifyToken } from '../middlewares/auth.middleware';
-import { updateProfileSchema, requestEmailChangeSchema, confirmEmailChangeSchema, updateLearningProfileSchema } from '../validators/user.schema';
+import { updateProfileSchema, requestEmailChangeSchema, confirmEmailChangeSchema, updateLearningProfileSchema, changePasswordSchema, verifyChangePasswordSchema } from '../validators/user.schema';
 import { validateZod } from '../middlewares/validate.middleware';
 
 /**
@@ -233,5 +233,8 @@ router.get('/learning-profile', verifyToken, getLearningProfileController);
  *         description: Chưa đăng nhập
  */
 router.put('/learning-profile', verifyToken, validateZod(updateLearningProfileSchema), updateLearningProfileController);
+
+router.post('/change-password', verifyToken, validateZod(changePasswordSchema), changePassword);
+router.post('/change-password/verify', verifyToken, validateZod(verifyChangePasswordSchema), verifyChangePassword);
 
 export default router;

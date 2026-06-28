@@ -46,41 +46,71 @@ export async function getDueSummary(userId: string): Promise<DueSummaryResponse>
   const remainingNewGoal = Math.max(0, dailyGoal - learnedToday);
   const remainingReviewGoal = Math.max(0, reviewPerDay - reviewedToday);
 
-  // 1. Đếm từ cần ôn tập đến hạn
-  const dueReviewsCount = await LearningProgress.countDocuments({
-    userId: userObjectId,
-    status: { $ne: "new" },
-    nextReviewDate: { $lte: now }
-  });
-
-  // 2. Đếm từ mới chưa từng học (thuộc các bộ từ trong library của user)
+  // Lấy các SetId trong thư viện để chỉ học các từ thuộc thư viện cá nhân
   const userSetIds = await VocabularySet.find({
     userId: userObjectId,
     isDeleted: { $ne: true }
   }).distinct("_id");
 
-  const newWordsCountResult = await Word.aggregate([
-    { $match: { setId: { $in: userSetIds }, isDeleted: { $ne: true } } },
+  // 1. Đếm từ cần ôn tập đến hạn (chỉ thuộc các bộ từ trong library của user, gom nhóm không trùng lặp từ vựng)
+  const dueReviewsCountResult = await LearningProgress.aggregate([
     {
-      $lookup: {
-        from: "learningprogresses",
-        let: { wordId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$wordId", "$$wordId"] },
-                  { $eq: ["$userId", userObjectId] }
-                ]
-              }
-            }
-          }
-        ],
-        as: "progress"
+      $match: {
+        userId: userObjectId,
+        setId: { $in: userSetIds },
+        status: { $ne: "new" },
+        nextReviewDate: { $lte: now }
       }
     },
-    { $match: { "progress.0": { $exists: false } } }, // Words chưa có tiến trình học
+    {
+      $lookup: {
+        from: "words",
+        localField: "wordId",
+        foreignField: "_id",
+        as: "wordInfo"
+      }
+    },
+    { $unwind: "$wordInfo" },
+    {
+      $group: {
+        _id: { $toLower: "$wordInfo.word" }
+      }
+    },
+    { $count: "count" }
+  ]);
+  const dueReviewsCount = dueReviewsCountResult[0]?.count ?? 0;
+
+  // Lấy tất cả các wordId đã được học (status !== "new") để loại khỏi từ mới
+  const learnedWordIds = await LearningProgress.find({
+    userId: userObjectId,
+    status: { $ne: "new" }
+  }).distinct("wordId");
+
+  const learnedWordTexts = await Word.find({
+    _id: { $in: learnedWordIds },
+    isDeleted: { $ne: true }
+  }).distinct("word");
+
+  const learnedWordTextsLower = learnedWordTexts.map((w: string) => w.toLowerCase());
+
+  // 2. Đếm từ mới chưa từng học (thuộc các bộ từ trong library của user, không trùng lặp với từ đã học, và không trùng lặp lẫn nhau)
+  const newWordsCountResult = await Word.aggregate([
+    { 
+      $match: { 
+        setId: { $in: userSetIds }, 
+        isDeleted: { $ne: true },
+        $expr: {
+          $not: {
+            $in: [{ $toLower: "$word" }, learnedWordTextsLower]
+          }
+        }
+      } 
+    },
+    {
+      $group: {
+        _id: { $toLower: "$word" }
+      }
+    },
     { $count: "count" }
   ]);
 
@@ -136,44 +166,82 @@ export async function getLearningQueue(
   }).distinct("_id");
 
   // ─── PHẦN 1: QUÂN BÀI CẦN ÔN (REVIEW CARDS) ───
+  // Gom nhóm theo chữ thường của từ vựng để tránh học trùng lặp
   const reviewProgress = remainingReviewGoal > 0
-    ? await LearningProgress.find({
-        userId: userObjectId,
-        setId: { $in: userSetIds },
-        status: { $ne: "new" },
-        nextReviewDate: { $lte: now }
-      })
-        .sort({ nextReviewDate: 1 })
-        .limit(remainingReviewGoal)
-        .populate("wordId")
-        .populate("setId", "name colorTheme")
-        .lean()
-    : [];
-
-  // ─── PHẦN 2: QUÂN BÀI MỚI (NEW CARDS) ───
-  const newWords = remainingNewGoal > 0
-    ? await Word.aggregate([
-        { $match: { setId: { $in: userSetIds }, isDeleted: { $ne: true } } },
+    ? await LearningProgress.aggregate([
         {
-          $lookup: {
-            from: "learningprogresses",
-            let: { wordId: "$_id" },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ["$wordId", "$$wordId"] },
-                      { $eq: ["$userId", userObjectId] }
-                    ]
-                  }
-                }
-              }
-            ],
-            as: "progress"
+          $match: {
+            userId: userObjectId,
+            setId: { $in: userSetIds },
+            status: { $ne: "new" },
+            nextReviewDate: { $lte: now }
           }
         },
-        { $match: { "progress.0": { $exists: false } } }, // Chỉ lấy từ chưa học
+        {
+          $lookup: {
+            from: "words",
+            localField: "wordId",
+            foreignField: "_id",
+            as: "wordId"
+          }
+        },
+        { $unwind: "$wordId" },
+        {
+          $lookup: {
+            from: "vocabularysets",
+            localField: "setId",
+            foreignField: "_id",
+            as: "setId"
+          }
+        },
+        { $unwind: "$setId" },
+        {
+          $group: {
+            _id: { $toLower: "$wordId.word" },
+            progressDoc: { $first: "$$ROOT" }
+          }
+        },
+        { $replaceRoot: { newRoot: "$progressDoc" } },
+        { $sort: { nextReviewDate: 1 } },
+        { $limit: remainingReviewGoal }
+      ])
+    : [];
+
+  // Lấy tất cả các wordId đã được học (status !== "new") để loại khỏi từ mới
+  const learnedWordIds = await LearningProgress.find({
+    userId: userObjectId,
+    status: { $ne: "new" }
+  }).distinct("wordId");
+
+  const learnedWordTexts = await Word.find({
+    _id: { $in: learnedWordIds },
+    isDeleted: { $ne: true }
+  }).distinct("word");
+
+  const learnedWordTextsLower = learnedWordTexts.map((w: string) => w.toLowerCase());
+
+  // ─── PHẦN 2: QUÂN BÀI MỚI (NEW CARDS) ───
+  // Loại bỏ các từ đã học, và gom nhóm theo chữ thường để tránh trùng lặp giữa các bộ từ
+  const newWords = remainingNewGoal > 0
+    ? await Word.aggregate([
+        { 
+          $match: { 
+            setId: { $in: userSetIds }, 
+            isDeleted: { $ne: true },
+            $expr: {
+              $not: {
+                $in: [{ $toLower: "$word" }, learnedWordTextsLower]
+              }
+            }
+          } 
+        },
+        {
+          $group: {
+            _id: { $toLower: "$word" },
+            wordDoc: { $first: "$$ROOT" }
+          }
+        },
+        { $replaceRoot: { newRoot: "$wordDoc" } },
         { $limit: remainingNewGoal }
       ])
     : [];
@@ -292,27 +360,72 @@ export async function submitReview(
   const sm2Result = applyReview(sm2Input, data.rating);
   const isCorrect = ["good", "easy"].includes(data.rating);
 
-  // 5. Cập nhật cơ sở dữ liệu tiến trình học
-  const updatedProgress = await LearningProgress.findOneAndUpdate(
-    { userId: userObjectId, wordId: wordObjectId },
-    {
-      $set: {
-        setId: setObjectId,
-        easeFactor: sm2Result.easeFactor,
-        interval: sm2Result.interval,
-        repetitions: sm2Result.repetitions,
-        status: sm2Result.status,
-        nextReviewDate: sm2Result.nextReviewDate,
-        lastReviewDate: data.reviewedAt ? new Date(data.reviewedAt) : new Date(),
-        lastRating: data.rating
+  // 5. Cập nhật cơ sở dữ liệu tiến trình học cho từ hiện tại và tất cả các từ đồng nghĩa/trùng tên trong thư viện
+  const targetWord = await Word.findById(wordObjectId).lean();
+  let updatedProgress: any = null;
+
+  if (targetWord) {
+    const wordText = targetWord.word;
+    const userSetIds = await VocabularySet.find({
+      userId: userObjectId,
+      isDeleted: { $ne: true }
+    }).distinct("_id");
+
+    const siblingWords = await Word.find({
+      setId: { $in: userSetIds },
+      word: { $regex: new RegExp(`^${wordText.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&")}$`, "i") },
+      isDeleted: { $ne: true }
+    }).select("_id setId").lean();
+
+    const updatePromises = siblingWords.map((sibling) => 
+      LearningProgress.findOneAndUpdate(
+        { userId: userObjectId, wordId: sibling._id },
+        {
+          $set: {
+            setId: sibling.setId,
+            easeFactor: sm2Result.easeFactor,
+            interval: sm2Result.interval,
+            repetitions: sm2Result.repetitions,
+            status: sm2Result.status,
+            nextReviewDate: sm2Result.nextReviewDate,
+            lastReviewDate: data.reviewedAt ? new Date(data.reviewedAt) : new Date(),
+            lastRating: data.rating
+          },
+          $inc: {
+            totalReviews: 1,
+            correctReviews: isCorrect ? 1 : 0
+          }
+        },
+        { new: true, upsert: true }
+      )
+    );
+
+    const results = await Promise.all(updatePromises);
+    // Giữ lại kết quả của từ vựng gốc đang học
+    updatedProgress = results.find(r => r?.wordId.toString() === wordId) || results[0];
+  } else {
+    // Fallback nếu không tìm thấy từ vựng gốc
+    updatedProgress = await LearningProgress.findOneAndUpdate(
+      { userId: userObjectId, wordId: wordObjectId },
+      {
+        $set: {
+          setId: setObjectId,
+          easeFactor: sm2Result.easeFactor,
+          interval: sm2Result.interval,
+          repetitions: sm2Result.repetitions,
+          status: sm2Result.status,
+          nextReviewDate: sm2Result.nextReviewDate,
+          lastReviewDate: data.reviewedAt ? new Date(data.reviewedAt) : new Date(),
+          lastRating: data.rating
+        },
+        $inc: {
+          totalReviews: 1,
+          correctReviews: isCorrect ? 1 : 0
+        }
       },
-      $inc: {
-        totalReviews: 1,
-        correctReviews: isCorrect ? 1 : 0
-      }
-    },
-    { new: true, upsert: true }
-  );
+      { new: true, upsert: true }
+    );
+  }
 
   // 6. Ghi nhận số liệu vào DailyStats phục vụ Person B tính Streak
   const todayMidnight = new Date();

@@ -5,6 +5,7 @@ import {
   refreshToken,
   logout,
   verifyEmail,
+  verifyMfa,
 } from "../controllers/auth.controller";
 import {
   forgotPassword,
@@ -16,6 +17,7 @@ import {
   verifyEmailSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  verifyMfaSchema,
 } from '../validators/auth.schema';
 import { validateZod } from '../middlewares/validate.middleware';
 import { verifyToken } from '../middlewares/auth.middleware';
@@ -170,6 +172,7 @@ router.post('/verify-email', authLimiter, validateZod(verifyEmailSchema), verify
  *         description: Rate limit
  */
 router.post('/login', authLimiter, validateZod(loginSchema), login);
+router.post('/verify-mfa', validateZod(verifyMfaSchema), verifyMfa);
 
 /**
  * @swagger

@@ -4,6 +4,7 @@ import { User } from '../models/User';
 import { getDueSummary } from './learning.service';
 import { sendDailyReminderEmail } from './mail.service';
 import { Notification } from '../models/Nofitication';
+import { isRedisAvailable, onRedisHealthChange } from '../config/redis';
 
 const REDIS_URL = process.env.REDIS_URL;
 const REMINDER_QUEUE_NAME = 'daily-reminders';
@@ -107,10 +108,44 @@ async function handleCheckReminders() {
   }
 }
 
+let fallbackTimerId: NodeJS.Timeout | null = null;
+
+function activateReminderFallback() {
+  if (fallbackTimerId) return;
+  console.log('[Reminder Fallback] Activating in-memory periodic reminder check (every 1 minute). Running immediate update...');
+  
+  if (reminderWorker) {
+    const workerToClose = reminderWorker;
+    reminderWorker = null;
+    workerToClose.close().catch(err => console.error('[Reminder Worker Close Error]:', err.message));
+  }
+  if (reminderQueue) {
+    const queueToClose = reminderQueue;
+    reminderQueue = null;
+    queueToClose.close().catch(err => console.error('[Reminder Queue Close Error]:', err.message));
+  }
+
+  handleCheckReminders().catch(err => console.error('Error in fallback check-reminders boot run:', err));
+
+  fallbackTimerId = setInterval(() => {
+    handleCheckReminders().catch(err => console.error('Error in fallback check-reminders:', err));
+  }, 60 * 1000);
+}
+
 export function initReminderWorker() {
-  if (!REDIS_URL) {
-    console.log('⚠ REDIS_URL not set in environment. Realtime background reminder worker is disabled.');
+  if (!REDIS_URL || !isRedisAvailable()) {
+    activateReminderFallback();
     return;
+  }
+
+  // Idempotency: Skip if already initialized
+  if (reminderQueue && reminderWorker) {
+    return;
+  }
+
+  if (fallbackTimerId) {
+    clearInterval(fallbackTimerId);
+    fallbackTimerId = null;
   }
 
   try {
@@ -121,6 +156,12 @@ export function initReminderWorker() {
     }
 
     reminderQueue = new Queue(REMINDER_QUEUE_NAME, { connection: redisOpts });
+    reminderQueue.on('error', (err) => {
+      console.error('❌ BullMQ Reminder Queue error:', err.message);
+      if (err.message.includes('limit exceeded') || err.message.includes('ETIMEDOUT') || err.message.includes('ECONNRESET')) {
+        activateReminderFallback();
+      }
+    });
 
     reminderWorker = new Worker(
       REMINDER_QUEUE_NAME,
@@ -131,6 +172,12 @@ export function initReminderWorker() {
       },
       { connection: redisOpts, concurrency: 1 }
     );
+    reminderWorker.on('error', (err) => {
+      console.error('❌ BullMQ Reminder Worker error:', err.message);
+      if (err.message.includes('limit exceeded') || err.message.includes('ETIMEDOUT') || err.message.includes('ECONNRESET')) {
+        activateReminderFallback();
+      }
+    });
 
     // Add repeatable job to run every minute
     reminderQueue.add(
@@ -144,10 +191,22 @@ export function initReminderWorker() {
         removeOnComplete: true,
         removeOnFail: true,
       }
-    );
+    ).catch(err => console.error('Failed to add reminder repeatable job:', err));
 
     console.log('⏰ BullMQ Realtime Reminder Worker & Queue initialized successfully!');
   } catch (error) {
     console.error('❌ Failed to initialize BullMQ Reminder Worker:', error);
+    activateReminderFallback();
   }
 }
+
+// Automatically react to Redis health changes
+onRedisHealthChange((healthy) => {
+  if (healthy) {
+    console.log('[Reminder Worker] Redis is healthy. Re-initializing BullMQ Reminder Worker...');
+    initReminderWorker();
+  } else {
+    console.log('[Reminder Worker] Redis is unhealthy. Activating fallback...');
+    activateReminderFallback();
+  }
+});

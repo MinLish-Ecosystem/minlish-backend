@@ -100,7 +100,7 @@ export async function getAdminStats() {
   return { totalUsers, activeUsers, bannedUsers, totalSets };
 }
 
-export async function listPublicSets(page = 1, limit = 20, status?: string, q?: string, category?: string) {
+export async function listPublicSets(page = 1, limit = 20, status?: string, q?: string, category?: string, sort = 'newest') {
   const skip = (page - 1) * limit;
   const filter: any = { isPublic: true, isDeleted: { $ne: true } };
   
@@ -125,14 +125,28 @@ export async function listPublicSets(page = 1, limit = 20, status?: string, q?: 
     }
   }
 
+  let sortOption: any = { learnerCount: -1 };
+  if (sort === 'newest') {
+    sortOption = { createdAt: -1 };
+  } else if (sort === 'oldest') {
+    sortOption = { createdAt: 1 };
+  } else if (sort === 'alphabetical') {
+    sortOption = { name: 1 };
+  }
+
   const [data, total] = await Promise.all([
-    VocabularySet.find(filter).sort({ learnerCount: -1 }).skip(skip).limit(limit).lean(),
+    VocabularySet.find(filter).populate('userId', 'name email').sort(sortOption).skip(skip).limit(limit).lean(),
     VocabularySet.countDocuments(filter),
   ]);
 
   const mappedData = data.map((s: any) => ({
     id: s._id.toString(),
-    userId: s.userId ? s.userId.toString() : undefined,
+    userId: s.userId ? {
+      _id: s.userId._id ? s.userId._id.toString() : s.userId.toString(),
+      name: s.userId.name || "",
+      email: s.userId.email || "",
+      avatar: s.userId.avatar || "",
+    } : undefined,
     name: s.name,
     description: s.description,
     coverUrl: s.coverUrl ?? "",

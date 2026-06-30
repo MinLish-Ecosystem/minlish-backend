@@ -196,7 +196,7 @@ export async function runAutoModerationBatch(adminId?: string): Promise<{ proces
   let rejectedCount = 0;
 
   for (const res of results) {
-    await VocabularySet.findByIdAndUpdate(res.setId, {
+    const set = await VocabularySet.findByIdAndUpdate(res.setId, {
       $set: {
         moderationStatus: res.status,
         moderationReason: res.reason,
@@ -209,11 +209,46 @@ export async function runAutoModerationBatch(adminId?: string): Promise<{ proces
     } else {
       rejectedCount++;
     }
+
+    // Send notifications to vocab set owner
+    if (set && set.userId) {
+      const notifTitle = res.status === 'approved' ? 'Bộ từ vựng đã được duyệt' : 'Bộ từ vựng bị từ chối';
+      const notifMessage = res.status === 'approved'
+        ? `Bộ từ vựng "${set.name}" của bạn đã được hệ thống tự động phê duyệt công khai.`
+        : `Bộ từ vựng "${set.name}" bị từ chối công khai bởi hệ thống AI. Lý do: ${res.reason}`;
+
+      const userNotification = await Notification.create({
+        userId: set.userId,
+        type: 'vocab_moderation',
+        title: notifTitle,
+        message: notifMessage,
+        isRead: false,
+        data: {
+          setId: res.setId.toString()
+        }
+      });
+
+      // Emit socket notification to vocabulary owner
+      try {
+        const { emitToUser } = require('../config/socket');
+        emitToUser(set.userId.toString(), 'new_notification', {
+          _id: userNotification._id.toString(),
+          type: 'vocab_moderation',
+          title: notifTitle,
+          message: notifMessage,
+          data: {
+            setId: res.setId.toString()
+          }
+        });
+      } catch (err) {
+        console.error('Failed to emit user vocab moderation socket notification:', err);
+      }
+    }
   }
 
   // 7. Tạo bản ghi Moderation Log
   if (results.length > 0) {
-    await ModerationLog.create({
+    const moderationLog = await ModerationLog.create({
       runAt: new Date(),
       type: adminId ? 'manual' : 'auto',
       setsCount: results.length,
@@ -226,22 +261,43 @@ export async function runAutoModerationBatch(adminId?: string): Promise<{ proces
       const admins = await User.find({ role: 'admin', isActive: true }).select('_id').lean();
       if (admins.length > 0) {
         const runType = adminId ? 'Manual' : 'Auto';
-        await Notification.insertMany(
-          admins.map((admin: any) => ({
-            userId: admin._id,
+        const notificationDataList = admins.map((admin: any) => ({
+          userId: admin._id,
+          type: 'ai_moderation',
+          title: `🤖 AI Moderation Complete (Vocabulary Sets)`,
+          message: `${runType} batch processed ${results.length} vocabulary sets — ✅ ${approvedCount} approved, ❌ ${results.length - approvedCount} rejected.`,
+          isRead: false,
+          data: {
+            moderationType: 'vocab',
+            processed: results.length,
+            approved: approvedCount,
+            rejected: results.length - approvedCount,
+            runType: adminId ? 'manual' : 'auto',
+            logId: moderationLog._id.toString(),
+          },
+        }));
+
+        await Notification.insertMany(notificationDataList);
+
+        // Emit socket notification to all connected admins
+        try {
+          const { emitToAdmins } = require('../config/socket');
+          emitToAdmins('new_notification', {
             type: 'ai_moderation',
             title: `🤖 AI Moderation Complete (Vocabulary Sets)`,
             message: `${runType} batch processed ${results.length} vocabulary sets — ✅ ${approvedCount} approved, ❌ ${results.length - approvedCount} rejected.`,
-            isRead: false,
             data: {
               moderationType: 'vocab',
               processed: results.length,
               approved: approvedCount,
               rejected: results.length - approvedCount,
               runType: adminId ? 'manual' : 'auto',
-            },
-          }))
-        );
+              logId: moderationLog._id.toString(),
+            }
+          });
+        } catch (socketErr) {
+          console.error('[Auto Moderation] Socket emit failed:', socketErr);
+        }
       }
     } catch (notifErr) {
       console.error('[Auto Moderation] Failed to send admin notifications:', notifErr);
@@ -500,13 +556,32 @@ export async function runAutoModerationPostsBatch(adminId?: string): Promise<{ p
         ? `Bài viết "${res.title}" của bạn đã được hệ thống tự động phê duyệt công khai.`
         : `Bài viết "${res.title}" bị từ chối công khai bởi hệ thống AI. Lý do: ${res.reason}`;
 
-      await Notification.create({
+      const userNotification = await Notification.create({
         userId: new Types.ObjectId(res.authorId),
-        type: 'system',
+        type: 'post_moderation',
         title: notifTitle,
         message: notifMessage,
-        isRead: false
+        isRead: false,
+        data: {
+          postId: res.id.toString()
+        }
       });
+
+      // Emit socket notification to post author
+      try {
+        const { emitToUser } = require('../config/socket');
+        emitToUser(res.authorId.toString(), 'new_notification', {
+          _id: userNotification._id.toString(),
+          type: 'post_moderation',
+          title: notifTitle,
+          message: notifMessage,
+          data: {
+            postId: res.id.toString()
+          }
+        });
+      } catch (err) {
+        console.error('Failed to emit user post moderation socket notification:', err);
+      }
     }
   }
 
@@ -518,22 +593,41 @@ export async function runAutoModerationPostsBatch(adminId?: string): Promise<{ p
       const admins = await User.find({ role: 'admin', isActive: true }).select('_id').lean();
       if (admins.length > 0) {
         const runType = adminId ? 'Manual' : 'Auto';
-        await Notification.insertMany(
-          admins.map((admin: any) => ({
-            userId: admin._id,
+        const notificationDataList = admins.map((admin: any) => ({
+          userId: admin._id,
+          type: 'ai_moderation',
+          title: `🤖 AI Moderation Complete (Community Posts)`,
+          message: `${runType} batch processed ${results.length} posts — ✅ ${approvedCount} approved, ❌ ${results.length - approvedCount} rejected.`,
+          isRead: false,
+          data: {
+            moderationType: 'post',
+            processed: results.length,
+            approved: approvedCount,
+            rejected: results.length - approvedCount,
+            runType: adminId ? 'manual' : 'auto',
+          },
+        }));
+
+        await Notification.insertMany(notificationDataList);
+
+        // Emit socket notification to all connected admins
+        try {
+          const { emitToAdmins } = require('../config/socket');
+          emitToAdmins('new_notification', {
             type: 'ai_moderation',
             title: `🤖 AI Moderation Complete (Community Posts)`,
             message: `${runType} batch processed ${results.length} posts — ✅ ${approvedCount} approved, ❌ ${results.length - approvedCount} rejected.`,
-            isRead: false,
             data: {
               moderationType: 'post',
               processed: results.length,
               approved: approvedCount,
               rejected: results.length - approvedCount,
               runType: adminId ? 'manual' : 'auto',
-            },
-          }))
-        );
+            }
+          });
+        } catch (socketErr) {
+          console.error('[Auto Moderation Posts] Socket emit failed:', socketErr);
+        }
       }
     } catch (notifErr) {
       console.error('[Auto Moderation Posts] Failed to send admin notifications:', notifErr);

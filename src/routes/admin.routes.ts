@@ -29,6 +29,7 @@ import {
 	overridePostModerationController,
 	listAllPostsController,
 	resetUserAuthController,
+	getSystemHealthController,
 } from '../controllers/admin.controller';
 
 /**
@@ -397,6 +398,21 @@ router.get('/audit-logs', validateZod(adminPaginationSchema), getAuditLogsContro
 // System Configuration
 router.get('/config', getSystemConfigController);
 router.put('/config', updateSystemConfigController);
+
+// System Health
+/**
+ * @swagger
+ * /api/v1/admin/health:
+ *   get:
+ *     summary: Kiểm tra sức khỏe hệ thống (MongoDB, Redis, Gemini) - Admin only
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Trạng thái kết nối của các dịch vụ
+ */
+router.get('/health', getSystemHealthController);
 
 // Moderation
 router.get('/moderation/pending', getPendingModerationSetsController);

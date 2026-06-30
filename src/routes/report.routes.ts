@@ -11,8 +11,44 @@ import { User } from '../models/User';
 
 const router = Router();
 
-// ─── POST /api/v1/reports — User submits a report ──────────────────────────
-// Rate limit: 3 reports per 24h per user (persisted in DB, not IP-based)
+/**
+ * @swagger
+ * tags:
+ *   - name: Reports
+ *     description: Quản lý báo cáo từ người dùng (support/bug reports)
+ */
+
+/**
+ * @swagger
+ * /api/v1/reports:
+ *   post:
+ *     summary: Gửi báo cáo hỗ trợ/lỗi mới (User)
+ *     tags: [Reports]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [category, subject, message]
+ *             properties:
+ *               category:
+ *                 type: string
+ *                 enum: [bug, vocab, community, learning, billing, other]
+ *               subject:
+ *                 type: string
+ *               message:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Báo cáo đã gửi thành công
+ *       400:
+ *         description: Thiếu thông số đầu vào
+ *       429:
+ *         description: Quá giới hạn 3 reports/24h
+ */
 router.post('/', verifyToken, catchAsync(async (req: Request, res: Response) => {
   const userId = (req.user?._id as any)?.toString();
   const { category, subject, message } = req.body;
@@ -40,22 +76,63 @@ router.post('/', verifyToken, catchAsync(async (req: Request, res: Response) => 
   const senderEmail = (user as any)?.email || '';
 
   if (admins.length > 0) {
-    await Notification.insertMany(
-      admins.map((admin: any) => ({
-        userId: admin._id,
+    const notifications = admins.map((admin: any) => ({
+      userId: admin._id,
+      type: 'report',
+      title: `📋 New Report: ${category}`,
+      message: `${senderName} (${senderEmail}) sent: "${subject.trim().substring(0, 80)}${subject.trim().length > 80 ? '…' : ''}"`,
+      isRead: false,
+      data: { reportId: report._id.toString(), category, senderName, senderEmail, subject: subject.trim(), message: message.trim() },
+    }));
+
+    await Notification.insertMany(notifications);
+
+    // Emit real-time socket event to admins
+    try {
+      const { emitToAdmins } = require('../config/socket');
+      emitToAdmins('new_notification', {
         type: 'report',
         title: `📋 New Report: ${category}`,
         message: `${senderName} (${senderEmail}) sent: "${subject.trim().substring(0, 80)}${subject.trim().length > 80 ? '…' : ''}"`,
-        isRead: false,
-        data: { reportId: report._id.toString(), category, senderName, senderEmail, subject: subject.trim(), message: message.trim() },
-      }))
-    );
+        data: { reportId: report._id.toString(), category, senderName, senderEmail, subject: subject.trim(), message: message.trim() }
+      });
+    } catch (err) {
+      console.error('Socket.IO emit error:', err);
+    }
   }
 
   return sendSuccess(res, 'Report submitted successfully. Thank you!', { reportId: report._id }, 201);
 }));
 
-// ─── GET /api/v1/reports — Admin gets all reports ──────────────────────────
+/**
+ * @swagger
+ * /api/v1/reports:
+ *   get:
+ *     summary: Lấy danh sách toàn bộ báo cáo của user (Admin only)
+ *     tags: [Reports]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *       - in: query
+ *         name: unread
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Chỉ lấy báo cáo chưa đọc
+ *     responses:
+ *       200:
+ *         description: Danh sách báo cáo
+ */
 router.get('/', verifyToken, requireAdmin, catchAsync(async (req: Request, res: Response) => {
   const page = Number(req.query.page || 1);
   const limit = Number(req.query.limit || 20);
@@ -78,7 +155,24 @@ router.get('/', verifyToken, requireAdmin, catchAsync(async (req: Request, res: 
   });
 }));
 
-// ─── PUT /api/v1/reports/:id/read — Admin marks a report as read ──────────
+/**
+ * @swagger
+ * /api/v1/reports/{id}/read:
+ *   put:
+ *     summary: Đánh dấu báo cáo đã đọc (Admin only)
+ *     tags: [Reports]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Thành công
+ */
 router.put('/:id/read', verifyToken, requireAdmin, catchAsync(async (req: Request, res: Response) => {
   await UserReport.findByIdAndUpdate(req.params.id, { $set: { isRead: true } });
   return sendSuccess(res, 'Report marked as read', null);

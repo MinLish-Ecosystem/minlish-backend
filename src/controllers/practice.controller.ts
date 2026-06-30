@@ -5,7 +5,7 @@ import { User } from "../models/User";
 import { DailyStats } from "../models/DailyStats";
 import mongoose from "mongoose";
 import { generateChallengeForDate } from "../services/practice.worker";
-import { redis } from "../config/redis";
+import { redis, isRedisAvailable, reportRedisFailure } from "../config/redis";
 import { catchAsync } from "../utils/catchAsync";
 import { sendSuccess, sendError } from "../utils/response.util";
 import { HttpStatus } from "../constants/httpStatus";
@@ -63,7 +63,7 @@ export const getDailyChallenge = catchAsync(async (req: Request, res: Response) 
   let challengeData: any = null;
 
   // 1. Try reading from Redis Cache
-  if (redis) {
+  if (isRedisAvailable() && redis) {
     try {
       const cached = await redis.get(redisKey);
       if (cached) {
@@ -71,6 +71,7 @@ export const getDailyChallenge = catchAsync(async (req: Request, res: Response) 
       }
     } catch (err) {
       console.error("Redis read error in getDailyChallenge:", err);
+      reportRedisFailure(err);
     }
   }
 
@@ -93,11 +94,12 @@ export const getDailyChallenge = catchAsync(async (req: Request, res: Response) 
     if (challenge) {
       challengeData = challenge;
       // Write to Redis cache with TTL ~41.6 hours (150000 seconds)
-      if (redis) {
+      if (isRedisAvailable() && redis) {
         try {
           await redis.set(redisKey, JSON.stringify(challenge), "EX", 150000);
         } catch (err) {
           console.error("Redis write error in getDailyChallenge:", err);
+          reportRedisFailure(err);
         }
       }
     }
@@ -216,7 +218,7 @@ export const submitDailyChallenge = catchAsync(async (req: Request, res: Respons
   );
 
   // 6. Push to Redis Sorted Set Leaderboard
-  if (redis) {
+  if (isRedisAvailable() && redis) {
     try {
       const user = await User.findById(userId).lean();
       const username = user?.name || user?.email?.split("@")[0] || "Learner";
@@ -229,6 +231,7 @@ export const submitDailyChallenge = catchAsync(async (req: Request, res: Respons
       await redis.expire(redisLeaderboardKey, 150000);
     } catch (err) {
       console.error("Redis write error in submitDailyChallenge:", err);
+      reportRedisFailure(err);
     }
   }
 
@@ -253,7 +256,7 @@ export const getDailyLeaderboard = catchAsync(async (req: Request, res: Response
   let list: Array<{ rank: number; name: string; score: number; isMe: boolean; correctAnswers: number; timeTaken: number }> = [];
 
   // 1. Primary: Try fetching from Redis Sorted Set
-  if (redis) {
+  if (isRedisAvailable() && redis) {
     try {
       const rawScores = await redis.zrevrange(redisLeaderboardKey, 0, 9, "WITHSCORES");
       // rawScores is [member1, score1, member2, score2, ...]
@@ -280,6 +283,7 @@ export const getDailyLeaderboard = catchAsync(async (req: Request, res: Response
       }
     } catch (err) {
       console.error("Redis read error in getDailyLeaderboard:", err);
+      reportRedisFailure(err);
     }
   }
 
@@ -309,7 +313,7 @@ export const getDailyLeaderboard = catchAsync(async (req: Request, res: Response
   let myResult = await DailyPracticeResult.findOne({ userId, date: userDate }).lean();
   
   if (myResult) {
-    if (redis) {
+    if (isRedisAvailable() && redis) {
       try {
         const user = await User.findById(userId).lean();
         const username = user?.name || user?.email?.split("@")[0] || "Learner";
@@ -320,6 +324,7 @@ export const getDailyLeaderboard = catchAsync(async (req: Request, res: Response
         }
       } catch (err) {
         console.error("Redis zrevrank error in getDailyLeaderboard:", err);
+        reportRedisFailure(err);
       }
     }
 

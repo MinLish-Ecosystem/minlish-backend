@@ -121,12 +121,15 @@ function calcMasteryPct(progress?: { status: string; totalReviews: number; corre
   }
 }
 
-async function ensureOwnedSet(setId: string, userId: string) {
-  const set = await VocabularySet.findOne({
+async function ensureOwnedSet(setId: string, userId: string, isAdmin: boolean = false) {
+  const query: any = {
     _id: setId,
-    userId: new Types.ObjectId(userId),
     isDeleted: { $ne: true },
-  });
+  };
+  if (!isAdmin) {
+    query.userId = new Types.ObjectId(userId);
+  }
+  const set = await VocabularySet.findOne(query);
   if (!set) {
     throw new AppError("Set not found or unauthorized", HttpStatus.NOT_FOUND, ErrorCodes.FORBIDDEN);
   }
@@ -363,11 +366,14 @@ export async function updateSet(
   data: Partial<CreateSetDTO>,
   isAdmin: boolean = false,
 ): Promise<VocabSetResponse> {
-  const existingSet = await VocabularySet.findOne({
+  const query: any = {
     _id: setId,
-    userId: new Types.ObjectId(userId),
     isDeleted: { $ne: true }
-  });
+  };
+  if (!isAdmin) {
+    query.userId = new Types.ObjectId(userId);
+  }
+  const existingSet = await VocabularySet.findOne(query);
 
   if (!existingSet) {
     throw new AppError("Set not found or unauthorized", HttpStatus.NOT_FOUND, ErrorCodes.FORBIDDEN);
@@ -412,8 +418,13 @@ export async function updateSet(
   // Reset moderationStatus to pending if set is public or becomes public on update, EXCEPT if updated by Admin
   const resetModeration = willBePublic && !isAdmin;
 
+  const updateFilter: any = { _id: setId, isDeleted: { $ne: true } };
+  if (!isAdmin) {
+    updateFilter.userId = new Types.ObjectId(userId);
+  }
+
   const set = await VocabularySet.findOneAndUpdate(
-    { _id: setId, userId: new Types.ObjectId(userId), isDeleted: { $ne: true } },
+    updateFilter,
     { 
       $set: {
         ...data,
@@ -669,8 +680,9 @@ export async function addWord(
   setId: string,
   userId: string,
   data: AddWordDTO,
+  isAdmin: boolean = false,
 ): Promise<WordResponse> {
-  const set = await ensureOwnedSet(setId, userId);
+  const set = await ensureOwnedSet(setId, userId, isAdmin);
 
   let finalImageUrl = data.imageUrl;
   if (data.imageUrl && (data.imageUrl.startsWith('data:image/') || data.imageUrl.includes('base64,'))) {
@@ -694,7 +706,7 @@ export async function addWord(
   }).save();
 
   const setUpdate: any = { $inc: { totalWords: 1 } };
-  if (set.isPublic) {
+  if (set.isPublic && !isAdmin) {
     setUpdate.$set = { moderationStatus: 'pending', moderationReason: '' };
   }
   await VocabularySet.findByIdAndUpdate(setId, setUpdate);
@@ -712,8 +724,9 @@ export async function updateWord(
   setId: string,
   userId: string,
   data: Partial<AddWordDTO>,
+  isAdmin: boolean = false,
 ): Promise<WordResponse> {
-  const set = await ensureOwnedSet(setId, userId);
+  const set = await ensureOwnedSet(setId, userId, isAdmin);
 
   const existingWord = await Word.findOne({
     _id: wordId,
@@ -756,7 +769,7 @@ export async function updateWord(
     { new: true },
   ).lean();
 
-  if (set.isPublic) {
+  if (set.isPublic && !isAdmin) {
     await VocabularySet.findByIdAndUpdate(setId, {
       $set: { moderationStatus: 'pending', moderationReason: '' }
     });
@@ -775,8 +788,9 @@ export async function deleteWord(
   wordId: string,
   setId: string,
   userId: string,
+  isAdmin: boolean = false,
 ): Promise<void> {
-  const set = await ensureOwnedSet(setId, userId);
+  const set = await ensureOwnedSet(setId, userId, isAdmin);
 
   const result = await Word.updateOne(
     { _id: wordId, setId: new Types.ObjectId(setId), isDeleted: { $ne: true } },
@@ -787,7 +801,7 @@ export async function deleteWord(
   }
 
   const setUpdate: any = { $inc: { totalWords: -1 } };
-  if (set.isPublic) {
+  if (set.isPublic && !isAdmin) {
     setUpdate.$set = { moderationStatus: 'pending', moderationReason: '' };
   }
 

@@ -108,20 +108,20 @@ export const getWordsController = catchAsync(async (req: Request, res: Response)
 export const addWordController = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
   const userId = req.user!.id;
-  const word = await vocabService.addWord(id, userId, req.body);
+  const word = await vocabService.addWord(id, userId, req.body, req.user?.role === 'admin');
   return sendSuccess(res, "Word added successfully", word, 201);
 });
 
 export const updateWordController = catchAsync(async (req: Request, res: Response) => {
   const { id, wordId } = req.params;
   const userId = req.user!.id;
-  const word = await vocabService.updateWord(wordId, id, userId, req.body);
+  const word = await vocabService.updateWord(wordId, id, userId, req.body, req.user?.role === 'admin');
   return sendSuccess(res, "Word updated successfully", word);
 });
 
 export const deleteWordController = catchAsync(async (req: Request, res: Response) => {
   const { id, wordId } = req.params;
   const userId = req.user!.id;
-  await vocabService.deleteWord(wordId, id, userId);
+  await vocabService.deleteWord(wordId, id, userId, req.user?.role === 'admin');
   return sendSuccess(res, "Word deleted successfully");
 });

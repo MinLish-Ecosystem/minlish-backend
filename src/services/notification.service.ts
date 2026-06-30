@@ -4,7 +4,13 @@ import { Notification } from '../models/Nofitication';
 export async function getNotifications(userId: string, page = 1, limit = 20, type?: string) {
   const skip = (page - 1) * limit;
   const query: any = { userId: new Types.ObjectId(userId), isDeleted: { $ne: true } };
-  if (type) query.type = type;
+  if (type) {
+    if (type.includes(',')) {
+      query.type = { $in: type.split(',') };
+    } else {
+      query.type = type;
+    }
+  }
 
   const [data, total, unreadCount] = await Promise.all([
     Notification.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),

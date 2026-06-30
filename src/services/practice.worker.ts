@@ -2,6 +2,7 @@ import { Queue, Worker } from "bullmq";
 import { Types } from "mongoose";
 import { Word } from "../models/Word";
 import { DailyChallenge, IQuestion } from "../models/DailyChallenge";
+import { isRedisAvailable, onRedisHealthChange } from '../config/redis';
 
 const REDIS_URL = process.env.REDIS_URL;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -166,10 +167,58 @@ async function ensureChallengeExists(dateStr: string) {
   }
 }
 
-export async function initDailyPracticeWorker() {
-  if (!REDIS_URL) {
-    console.log("⚠ REDIS_URL not set in environment. Daily practice worker is disabled.");
+let fallbackTimerId: NodeJS.Timeout | null = null;
+
+function activatePracticeFallback() {
+  if (fallbackTimerId) return;
+  console.log('[Practice Fallback] Activating in-memory daily challenge checker (every 12 hours). Running immediate update...');
+  
+  if (practiceWorker) {
+    const workerToClose = practiceWorker;
+    practiceWorker = null;
+    workerToClose.close().catch(err => console.error('[Practice Worker Close Error]:', err.message));
+  }
+  if (practiceQueue) {
+    const queueToClose = practiceQueue;
+    practiceQueue = null;
+    queueToClose.close().catch(err => console.error('[Practice Queue Close Error]:', err.message));
+  }
+
+  runPracticeFallbackCheck();
+
+  fallbackTimerId = setInterval(() => {
+    runPracticeFallbackCheck();
+  }, 12 * 60 * 60 * 1000);
+}
+
+async function runPracticeFallbackCheck() {
+  try {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split("T")[0];
+
+    await ensureChallengeExists(todayStr);
+    await ensureChallengeExists(tomorrowStr);
+  } catch (err) {
+    console.error('Error in practice fallback check:', err);
+  }
+}
+
+export function initDailyPracticeWorker() {
+  if (!REDIS_URL || !isRedisAvailable()) {
+    activatePracticeFallback();
     return;
+  }
+
+  // Idempotency: Skip if already initialized
+  if (practiceQueue && practiceWorker) {
+    return;
+  }
+
+  if (fallbackTimerId) {
+    clearInterval(fallbackTimerId);
+    fallbackTimerId = null;
   }
 
   try {
@@ -180,6 +229,12 @@ export async function initDailyPracticeWorker() {
     }
 
     practiceQueue = new Queue(PRACTICE_QUEUE_NAME, { connection: redisOpts });
+    practiceQueue.on('error', (err) => {
+      console.error('❌ BullMQ Practice Queue error:', err.message);
+      if (err.message.includes('limit exceeded') || err.message.includes('ETIMEDOUT') || err.message.includes('ECONNRESET')) {
+        activatePracticeFallback();
+      }
+    });
 
     practiceWorker = new Worker(
       PRACTICE_QUEUE_NAME,
@@ -194,9 +249,15 @@ export async function initDailyPracticeWorker() {
       },
       { connection: redisOpts, concurrency: 1 }
     );
+    practiceWorker.on('error', (err) => {
+      console.error('❌ BullMQ Practice Worker error:', err.message);
+      if (err.message.includes('limit exceeded') || err.message.includes('ETIMEDOUT') || err.message.includes('ECONNRESET')) {
+        activatePracticeFallback();
+      }
+    });
 
     // Add repeatable job to run at 12:00 UTC daily (19:00 UTC+7)
-    await practiceQueue.add(
+    practiceQueue.add(
       "generate-daily-challenge",
       {},
       {
@@ -207,7 +268,7 @@ export async function initDailyPracticeWorker() {
         removeOnComplete: true,
         removeOnFail: true,
       }
-    );
+    ).catch(err => console.error('Failed to add practice repeatable job:', err));
 
     console.log("⏰ BullMQ Daily Practice Worker & Queue initialized successfully!");
 
@@ -217,11 +278,22 @@ export async function initDailyPracticeWorker() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = tomorrow.toISOString().split("T")[0];
 
-    // Run asynchronously on boot so it doesn't block server start
     ensureChallengeExists(todayStr);
     ensureChallengeExists(tomorrowStr);
 
   } catch (error) {
     console.error("❌ Failed to initialize BullMQ Daily Practice Worker:", error);
+    activatePracticeFallback();
   }
 }
+
+// Automatically react to Redis health changes
+onRedisHealthChange((healthy) => {
+  if (healthy) {
+    console.log('[Practice Worker] Redis is healthy. Re-initializing BullMQ Daily Practice Worker...');
+    initDailyPracticeWorker();
+  } else {
+    console.log('[Practice Worker] Redis is unhealthy. Activating fallback...');
+    activatePracticeFallback();
+  }
+});

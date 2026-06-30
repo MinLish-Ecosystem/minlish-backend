@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { catchAsync } from '../utils/catchAsync';
 import { sendSuccess } from '../utils/response.util';
 import * as adminService from '../services/admin.service';
@@ -12,6 +13,8 @@ import { VocabularySet } from '../models/VocabularySet';
 import { ModerationLog } from '../models/ModerationLog';
 import { Post } from '../models/Post';
 import { Notification } from '../models/Nofitication';
+import { AdminAuditLog } from '../models/AdminAuditLog';
+import { isRedisAvailable } from '../config/redis';
 import { User } from '../models/User';
 
 /**
@@ -202,7 +205,8 @@ export const listPublicSetsController = catchAsync(async (req: Request, res: Res
   const status = req.query.status as string || undefined;
   const q = req.query.q as string || undefined;
   const category = req.query.category as string || undefined;
-  const result = await adminService.listPublicSets(page, limit, status, q, category);
+  const sort = req.query.sort as string || 'newest';
+  const result = await adminService.listPublicSets(page, limit, status, q, category, sort);
   return sendSuccess(res, 'Public sets fetched successfully', result.data, 200, result.pagination);
 });
 
@@ -366,13 +370,32 @@ export const overrideModerationController = catchAsync(async (req: Request, res:
     const message = status === 'approved'
       ? `Bộ từ vựng "${set.name}" của bạn đã được duyệt và đăng công khai.`
       : `Bộ từ vựng "${set.name}" bị từ chối công khai. Lý do: ${reason}`;
-    await Notification.create({
+    const userNotification = await Notification.create({
       userId: set.userId,
-      type: 'system',
+      type: 'vocab_moderation',
       title,
       message,
       isRead: false,
+      data: {
+        setId: set._id.toString()
+      }
     });
+
+    // Emit socket notification to vocab owner
+    try {
+      const { emitToUser } = require('../config/socket');
+      emitToUser(set.userId.toString(), 'new_notification', {
+        _id: userNotification._id.toString(),
+        type: 'vocab_moderation',
+        title,
+        message,
+        data: {
+          setId: set._id.toString()
+        }
+      });
+    } catch (err) {
+      console.error('Failed to emit manual vocab moderation socket notification:', err);
+    }
   }
 
   return sendSuccess(res, `Set moderation status updated to ${status} successfully`);
@@ -413,6 +436,9 @@ export const overridePostModerationController = catchAsync(async (req: Request, 
     throw new AppError('Post not found', HttpStatus.NOT_FOUND);
   }
 
+  const oldStatus = post.moderationStatus;
+  const oldReason = post.moderationReason;
+
   post.moderationStatus = status;
   post.moderationReason = reason || '';
   await post.save();
@@ -423,12 +449,42 @@ export const overridePostModerationController = catchAsync(async (req: Request, 
     ? `Bài viết "${post.title}" của bạn đã được duyệt và đăng công khai.`
     : `Bài viết "${post.title}" bị từ chối công khai. Lý do: ${reason || 'Không có lý do cụ thể'}`;
 
-  await Notification.create({
+  const userNotification = await Notification.create({
     userId: post.author,
-    type: 'system',
+    type: 'post_moderation',
     title,
     message,
     isRead: false,
+    data: {
+      postId: post._id.toString()
+    }
+  });
+
+  // Emit socket notification to post author
+  try {
+    const { emitToUser } = require('../config/socket');
+    emitToUser(post.author.toString(), 'new_notification', {
+      _id: userNotification._id.toString(),
+      type: 'post_moderation',
+      title,
+      message,
+      data: {
+        postId: post._id.toString()
+      }
+    });
+  } catch (err) {
+    console.error('Failed to emit manual post moderation socket notification:', err);
+  }
+
+  // Create audit log
+  await AdminAuditLog.create({
+    adminId: new mongoose.Types.ObjectId(adminId),
+    action: status === 'approved' ? 'approve_post' : 'reject_post',
+    targetId: post._id,
+    targetType: 'post' as any,
+    reason: reason || '',
+    before: { moderationStatus: oldStatus, moderationReason: oldReason },
+    after: { moderationStatus: status, moderationReason: reason || '' }
   });
 
   return sendSuccess(res, `Post moderation status updated to ${status} successfully`);
@@ -441,6 +497,8 @@ export const listAllPostsController = catchAsync(async (req: Request, res: Respo
   const adminId = req.user!.id;
   const q = req.query.q as string || undefined;
   const category = req.query.category as string || undefined;
+  const sort = req.query.sort as string || 'newest';
+  const status = req.query.status as string || undefined;
 
   let filter: any = {};
   if (tab === 'published') {
@@ -452,7 +510,29 @@ export const listAllPostsController = catchAsync(async (req: Request, res: Respo
   } else if (tab === 'moderated') {
     filter = { isPublic: true, moderationStatus: { $in: ['approved', 'rejected'] } };
   } else {
-    filter = { isPublic: true };
+    filter = {};
+  }
+
+  // If status parameter is set, let it override the basic published tab filters
+  if (tab === 'published' && status) {
+    if (status === 'approved') {
+      filter = { isPublic: true, moderationStatus: 'approved' };
+    } else if (status === 'pending') {
+      filter = { isPublic: true, moderationStatus: 'pending' };
+    } else if (status === 'rejected') {
+      filter = { isPublic: true, moderationStatus: 'rejected' };
+    } else if (status === 'private') {
+      filter = { isPublic: false };
+    } else if (status === 'all') {
+      filter = {};
+    }
+  }
+
+  let sortOption: any = { createdAt: -1 };
+  if (sort === 'oldest') {
+    sortOption = { createdAt: 1 };
+  } else if (sort === 'alphabetical') {
+    sortOption = { title: 1 };
   }
 
   if (category) {
@@ -480,7 +560,7 @@ export const listAllPostsController = catchAsync(async (req: Request, res: Respo
   }
 
   const [posts, total] = await Promise.all([
-    Post.find(filter).populate('author', 'name email avatar').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    Post.find(filter).populate('author', 'name email avatar').sort(sortOption).skip(skip).limit(limit).lean(),
     Post.countDocuments(filter)
   ]);
 
@@ -501,3 +581,29 @@ export const resetUserAuthController = catchAsync(async (req: Request, res: Resp
 
   return sendSuccess(res, 'User credentials reset successfully and temporary password email sent');
 });
+
+// ─── System Health Check ───────────────────────────────────────────────────────
+
+export const getSystemHealthController = catchAsync(async (_req: Request, res: Response) => {
+  // 1. MongoDB: check if mongoose connection is open (readyState 1 = connected)
+  const mongoOk = mongoose.connection.readyState === 1;
+
+  // 2. Redis: use the shared health flag from redis.ts
+  const redisOk = isRedisAvailable();
+
+  // 3. Gemini: just check if the key is configured (no actual API call to save quota)
+  const geminiOk = !!process.env.GEMINI_API_KEY;
+
+  // 4. Mailer / Cloudinary: read from system config
+  const config = await getOrCreateSystemConfig();
+
+  return sendSuccess(res, 'System health fetched', {
+    mongodb: mongoOk,
+    redis: redisOk,
+    gemini: geminiOk,
+    mailer: config.mailerActive,
+    cloudinary: config.cloudinaryActive,
+    redisConfigured: !!process.env.REDIS_URL,
+  });
+});
+

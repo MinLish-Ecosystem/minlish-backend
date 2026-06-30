@@ -3,6 +3,7 @@ import { getOrCreateSystemConfig } from '../models/SystemConfig';
 import { runAutoModerationBatch, runAutoModerationPostsBatch } from './moderation.service';
 import { VocabularySet } from '../models/VocabularySet';
 import { Post } from '../models/Post';
+import { isRedisAvailable, onRedisHealthChange } from '../config/redis';
 
 const REDIS_URL = process.env.REDIS_URL;
 const MODERATION_QUEUE_NAME = 'auto-moderation';
@@ -54,20 +55,17 @@ export async function initModerationWorker() {
   const config = await getOrCreateSystemConfig();
   const interval = config.moderationInterval || 3;
 
-  if (!REDIS_URL) {
-    console.log(`⚠ REDIS_URL not set. Auto-moderation will run in local fallback mode (Timer: every ${interval} hour(s)).`);
-    
-    // Khởi chạy đợt duyệt thô lúc boot (chạy bất đồng bộ)
-    runAutoModerationBatch().catch(err => console.error('Error in fallback moderation boot run:', err));
-    runAutoModerationPostsBatch().catch(err => console.error('Error in fallback post moderation boot run:', err));
+  if (!REDIS_URL || !isRedisAvailable()) {
+    activateModerationFallback(interval);
+    return;
+  }
 
-    // Thiết lập timer lặp
-    fallbackTimerId = setInterval(() => {
-      console.log('[Auto Moderation Fallback] Running periodic auto-moderation batch...');
-      runAutoModerationBatch().catch(err => console.error('Error in fallback moderation run:', err));
-      runAutoModerationPostsBatch().catch(err => console.error('Error in fallback post moderation run:', err));
-    }, interval * 60 * 60 * 1000);
+  if (fallbackTimerId) {
+    clearInterval(fallbackTimerId);
+    fallbackTimerId = null;
+  }
 
+  if (moderationQueue && moderationWorker) {
     return;
   }
 
@@ -79,6 +77,12 @@ export async function initModerationWorker() {
     }
 
     moderationQueue = new Queue(MODERATION_QUEUE_NAME, { connection: redisOpts });
+    moderationQueue.on('error', (err) => {
+      console.error('❌ BullMQ Moderation Queue error:', err.message);
+      if (err.message.includes('limit exceeded') || err.message.includes('ETIMEDOUT')) {
+        activateModerationFallback(interval);
+      }
+    });
 
     moderationWorker = new Worker(
       MODERATION_QUEUE_NAME,
@@ -91,6 +95,12 @@ export async function initModerationWorker() {
       },
       { connection: redisOpts, concurrency: 1 }
     );
+    moderationWorker.on('error', (err) => {
+      console.error('❌ BullMQ Moderation Worker error:', err.message);
+      if (err.message.includes('limit exceeded') || err.message.includes('ETIMEDOUT')) {
+        activateModerationFallback(interval);
+      }
+    });
 
     // Xóa job lặp cũ nếu có và lên lịch chạy mới
     await rescheduleModerationJob(interval);
@@ -103,7 +113,34 @@ export async function initModerationWorker() {
 
   } catch (error) {
     console.error('❌ Failed to initialize BullMQ Moderation Worker:', error);
+    activateModerationFallback(interval);
   }
+}
+
+function activateModerationFallback(interval: number) {
+  if (fallbackTimerId) return; // Prevent multiple activations
+  
+  console.log(`[Auto Moderation Fallback] Activating fallback. Cycle: ${interval}h. Running immediate synchronization...`);
+  
+  if (moderationWorker) {
+    const workerToClose = moderationWorker;
+    moderationWorker = null;
+    workerToClose.close().catch(err => console.error('[Moderation Worker Close Error]:', err.message));
+  }
+  if (moderationQueue) {
+    const queueToClose = moderationQueue;
+    moderationQueue = null;
+    queueToClose.close().catch(err => console.error('[Moderation Queue Close Error]:', err.message));
+  }
+
+  runAutoModerationBatch().catch(err => console.error('Error in fallback moderation boot run:', err));
+  runAutoModerationPostsBatch().catch(err => console.error('Error in fallback post moderation boot run:', err));
+
+  fallbackTimerId = setInterval(() => {
+    console.log('[Auto Moderation Fallback] Running periodic auto-moderation batch...');
+    runAutoModerationBatch().catch(err => console.error('Error in fallback moderation run:', err));
+    runAutoModerationPostsBatch().catch(err => console.error('Error in fallback post moderation run:', err));
+  }, interval * 60 * 60 * 1000);
 }
 
 /**
@@ -113,16 +150,8 @@ export async function rescheduleModerationJob(intervalHours: number): Promise<vo
   console.log(`[Moderation Worker] Rescheduling job to run every ${intervalHours} hour(s)...`);
 
   // 1. Trường hợp dùng timer fallback
-  if (!REDIS_URL) {
-    if (fallbackTimerId) {
-      clearInterval(fallbackTimerId);
-    }
-    fallbackTimerId = setInterval(() => {
-      console.log('[Auto Moderation Fallback] Running periodic auto-moderation batch...');
-      runAutoModerationBatch().catch(err => console.error('Error in fallback moderation run:', err));
-      runAutoModerationPostsBatch().catch(err => console.error('Error in fallback post moderation run:', err));
-    }, intervalHours * 60 * 60 * 1000);
-    console.log(`[Moderation Worker] Fallback timer successfully rescheduled to every ${intervalHours} hour(s).`);
+  if (!REDIS_URL || !isRedisAvailable()) {
+    activateModerationFallback(intervalHours);
     return;
   }
 
@@ -162,3 +191,17 @@ export async function rescheduleModerationJob(intervalHours: number): Promise<vo
     console.error('[Moderation Worker] Failed to reschedule repeatable job:', error);
   }
 }
+
+// Automatically react to Redis health changes
+onRedisHealthChange((healthy: boolean) => {
+  if (healthy) {
+    console.log('[Moderation Worker] Redis is healthy. Re-initializing BullMQ Moderation Worker...');
+    initModerationWorker();
+  } else {
+    console.log('[Moderation Worker] Redis is unhealthy. Activating fallback...');
+    // Fetch current config to pass the correct interval
+    getOrCreateSystemConfig()
+      .then(config => activateModerationFallback(config.moderationInterval || 3))
+      .catch(() => activateModerationFallback(3));
+  }
+});

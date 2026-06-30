@@ -4,7 +4,10 @@ import { Comment } from '../models/Comment';
 import { sendSuccess, sendError } from '../utils/response.util';
 import { catchAsync } from '../utils/catchAsync';
 import { HttpStatus } from '../constants/httpStatus';
+import { AdminAuditLog } from '../models/AdminAuditLog';
+import { Notification } from '../models/Nofitication';
 import mongoose from 'mongoose';
+import { User } from '../models/User';
 
 /**
  * GET /api/v1/posts
@@ -271,6 +274,45 @@ export const toggleLike = catchAsync(async (req: Request, res: Response) => {
     // Like
     post.likes.push(userObjectId);
     isLiked = true;
+
+    // Send notification to post author if liker is different
+    if (post.author.toString() !== userId.toString()) {
+      try {
+        const liker = await User.findById(userId).select('name').lean();
+        const likerName = (liker as any)?.name || 'Một người dùng';
+        const notifTitle = `❤️ Lượt thích mới trên bài viết`;
+        const notifMessage = `${likerName} đã thích bài viết "${post.title}" của bạn.`;
+
+        const userNotification = await Notification.create({
+          userId: post.author,
+          type: 'posts_interaction',
+          title: notifTitle,
+          message: notifMessage,
+          isRead: false,
+          data: {
+            postId: post._id.toString()
+          }
+        });
+
+        // Emit Socket.IO event to post author
+        try {
+          const { emitToUser } = require('../config/socket');
+          emitToUser(post.author.toString(), 'new_notification', {
+            _id: userNotification._id.toString(),
+            type: 'posts_interaction',
+            title: notifTitle,
+            message: notifMessage,
+            data: {
+              postId: post._id.toString()
+            }
+          });
+        } catch (socketErr) {
+          console.error('Failed to emit like socket notification:', socketErr);
+        }
+      } catch (err) {
+        console.error('Failed to process like notification:', err);
+      }
+    }
   }
 
   await post.save();
@@ -381,6 +423,42 @@ export const addComment = catchAsync(async (req: Request, res: Response) => {
 
   const populatedComment = await comment.populate('author', 'name avatar email');
 
+  // Send notification to post author if commenter is different
+  if (post.author.toString() !== userId.toString()) {
+    const commenterName = (populatedComment.author as any)?.name || 'Một người dùng';
+    const notifTitle = `💬 Bình luận mới trên bài viết`;
+    const notifMessage = `${commenterName} đã bình luận về bài viết "${post.title}" của bạn.`;
+    
+    const userNotification = await Notification.create({
+      userId: post.author,
+      type: 'posts_interaction',
+      title: notifTitle,
+      message: notifMessage,
+      isRead: false,
+      data: {
+        postId: post._id.toString(),
+        commentId: comment._id.toString()
+      }
+    });
+
+    // Emit Socket.IO event to post author
+    try {
+      const { emitToUser } = require('../config/socket');
+      emitToUser(post.author.toString(), 'new_notification', {
+        _id: userNotification._id.toString(),
+        type: 'posts_interaction',
+        title: notifTitle,
+        message: notifMessage,
+        data: {
+          postId: post._id.toString(),
+          commentId: comment._id.toString()
+        }
+      });
+    } catch (err) {
+      console.error('Failed to emit comment socket notification:', err);
+    }
+  }
+
   const commentObj = populatedComment.toObject();
   const formattedComment = {
     ...commentObj,
@@ -471,6 +549,9 @@ export const updatePost = catchAsync(async (req: Request, res: Response) => {
   if (coverImage !== undefined) post.coverImage = coverImage;
   if (isFeatured !== undefined) post.isFeatured = isFeatured;
 
+  const oldIsPublic = post.isPublic;
+  const isAuthor = post.author.toString() === userId.toString();
+
   if (isPublic !== undefined) {
     post.isPublic = isPublic;
     if (userRole !== 'admin') {
@@ -488,6 +569,38 @@ export const updatePost = catchAsync(async (req: Request, res: Response) => {
   }
 
   await post.save();
+
+  // Audit logging & notification for admin actions on other users' posts
+  if (userRole === 'admin' && !isAuthor) {
+    const isPrivacyChangeOnly = isPublic !== undefined && title === undefined && content === undefined;
+    const action = (isPublic === false && oldIsPublic === true) ? 'unpublish_post' : 'update_post';
+    
+    await AdminAuditLog.create({
+      adminId: new mongoose.Types.ObjectId(userId),
+      action,
+      targetId: post._id,
+      targetType: 'post',
+      reason: isPrivacyChangeOnly ? 'Retracted to private by Administrator' : 'Modified by Administrator',
+      before: { isPublic: oldIsPublic },
+      after: { isPublic: post.isPublic }
+    });
+
+    // Send notification to author
+    const notifTitle = (isPublic === false && oldIsPublic === true)
+      ? 'Bài viết của bạn đã được chuyển về chế độ riêng tư'
+      : 'Bài viết của bạn đã được cập nhật bởi quản trị viên';
+    const notifMsg = (isPublic === false && oldIsPublic === true)
+      ? `Bài viết "${post.title}" của bạn đã được chuyển về chế độ riêng tư bởi quản trị viên.`
+      : `Bài viết "${post.title}" của bạn đã được cập nhật nội dung bởi quản trị viên.`;
+
+    await Notification.create({
+      userId: post.author,
+      type: 'system',
+      title: notifTitle,
+      message: notifMsg,
+      isRead: false
+    });
+  }
 
   const populatedPost = await post.populate('author', 'name avatar email');
 
@@ -517,11 +630,35 @@ export const deletePost = catchAsync(async (req: Request, res: Response) => {
     return sendError(res, 'You do not have permission to delete this post', HttpStatus.FORBIDDEN);
   }
 
+  const isAuthor = post.author.toString() === userId.toString();
+
   // Xóa bài viết
   await Post.findByIdAndDelete(id);
 
   // Cascade delete bình luận liên quan
   await Comment.deleteMany({ post: id });
+
+  // Audit logging & notification for admin actions on other users' posts
+  if (userRole === 'admin' && !isAuthor) {
+    await AdminAuditLog.create({
+      adminId: new mongoose.Types.ObjectId(userId),
+      action: 'delete_post',
+      targetId: post._id,
+      targetType: 'post',
+      reason: 'Deleted by Administrator',
+      before: { title: post.title, author: post.author },
+      after: null
+    });
+
+    // Send notification to author
+    await Notification.create({
+      userId: post.author,
+      type: 'system',
+      title: 'Bài viết của bạn đã bị xóa bởi quản trị viên',
+      message: `Bài viết "${post.title}" của bạn đã bị xóa khỏi hệ thống bởi quản trị viên.`,
+      isRead: false
+    });
+  }
 
   return sendSuccess(res, 'Post deleted successfully');
 });

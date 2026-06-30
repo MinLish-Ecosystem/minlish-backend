@@ -22,34 +22,257 @@ import {
 
 const router = Router();
 
+/**
+ * @swagger
+ * tags:
+ *   - name: Posts
+ *     description: Quản lý bài viết và bình luận cộng đồng (yêu cầu đăng nhập)
+ */
+
+/**
+ * @swagger
+ * /api/v1/posts:
+ *   get:
+ *     summary: Lấy danh sách bài viết cộng đồng (hỗ trợ search, filter, sort, pagination)
+ *     tags: [Posts]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 12
+ *     responses:
+ *       200:
+ *         description: Danh sách bài viết
+ */
+
 // GET /api/v1/posts - Lấy danh sách bài viết (query: q, category, difficulty, readingTime, sortBy, page, limit)
 router.get('/', verifyToken, validateZod(queryPostSchema), getPosts);
 
-// POST /api/v1/posts - Tạo bài viết mới
+/**
+ * @swagger
+ * /api/v1/posts:
+ *   post:
+ *     summary: Tạo bài viết mới
+ *     tags: [Posts]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title, content]
+ *             properties:
+ *               title:
+ *                 type: string
+ *               content:
+ *                 type: string
+ *               category:
+ *                 type: string
+ *               difficulty:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Đã tạo bài viết thành công
+ */
 router.post('/', verifyToken, validateZod(createPostSchema), createPost);
 
-// GET /api/v1/posts/:id - Chi tiết bài viết
+/**
+ * @swagger
+ * /api/v1/posts/{id}:
+ *   get:
+ *     summary: Chi tiết bài viết theo ID
+ *     tags: [Posts]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Chi tiết bài viết
+ */
 router.get('/:id', verifyToken, getPostDetail);
 
-// PUT /api/v1/posts/:id - Chỉnh sửa bài viết
+/**
+ * @swagger
+ * /api/v1/posts/{id}:
+ *   put:
+ *     summary: Chỉnh sửa bài viết
+ *     tags: [Posts]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               content:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ */
 router.put('/:id', verifyToken, validateZod(updatePostSchema), updatePost);
 
-// DELETE /api/v1/posts/:id - Xóa bài viết
+/**
+ * @swagger
+ * /api/v1/posts/{id}:
+ *   delete:
+ *     summary: Xóa bài viết
+ *     tags: [Posts]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Xóa thành công
+ */
 router.delete('/:id', verifyToken, deletePost);
 
-// POST /api/v1/posts/:id/like - Like/Unlike bài viết
+/**
+ * @swagger
+ * /api/v1/posts/{id}/like:
+ *   post:
+ *     summary: Thích hoặc bỏ thích bài viết
+ *     tags: [Posts]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Thao tác thành công
+ */
 router.post('/:id/like', verifyToken, toggleLike);
 
-// POST /api/v1/posts/:id/bookmark - Bookmark/Unbookmark bài viết
+/**
+ * @swagger
+ * /api/v1/posts/{id}/bookmark:
+ *   post:
+ *     summary: Bookmark hoặc bỏ bookmark bài viết
+ *     tags: [Posts]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Thao tác thành công
+ */
 router.post('/:id/bookmark', verifyToken, toggleBookmark);
 
-// GET /api/v1/posts/:id/comments - Lấy danh sách bình luận
+/**
+ * @swagger
+ * /api/v1/posts/{id}/comments:
+ *   get:
+ *     summary: Lấy danh sách bình luận của bài viết
+ *     tags: [Posts]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Danh sách bình luận
+ */
 router.get('/:id/comments', verifyToken, getComments);
 
-// POST /api/v1/posts/:id/comments - Thêm bình luận mới
+/**
+ * @swagger
+ * /api/v1/posts/{id}/comments:
+ *   post:
+ *     summary: Thêm bình luận mới vào bài viết
+ *     tags: [Posts]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [content]
+ *             properties:
+ *               content:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Thêm bình luận thành công
+ */
 router.post('/:id/comments', verifyToken, validateZod(createCommentSchema), addComment);
 
-// POST /api/v1/posts/comments/:commentId/like - Like/Unlike bình luận
+/**
+ * @swagger
+ * /api/v1/posts/comments/{commentId}/like:
+ *   post:
+ *     summary: Thích hoặc bỏ thích bình luận
+ *     tags: [Posts]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: commentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Thao tác thành công
+ */
 router.post('/comments/:commentId/like', verifyToken, toggleLikeComment);
 
 export default router;

@@ -1,5 +1,6 @@
 import './config/env'; // Validate biến môi trường ngay khi khởi động
 
+import http from 'http';
 import app from './app';
 import { connectDB } from './config/db';
 import { verifyMailer } from './config/mailer';
@@ -7,6 +8,7 @@ import { cleanExpiredTokens } from './utils/tokenBlacklist';
 import { initReminderWorker } from './services/reminder.worker';
 import { initDailyPracticeWorker } from './services/practice.worker';
 import { initModerationWorker } from './services/moderation.worker';
+import { initSocket } from './config/socket';
 
 const PORT = process.env.PORT || 3000;
 const isDev = process.env.NODE_ENV !== 'production';
@@ -32,21 +34,28 @@ const startServer = async () => {
   try {
     await connectDB();
     await verifyMailer();
-    
+
+    // Tạo HTTP server dùng chung cho Express + Socket.IO
+    const httpServer = http.createServer(app);
+
+    // Khởi tạo Socket.IO (gắn vào cùng HTTP server)
+    initSocket(httpServer);
+
     // Khởi tạo worker nhắc nhở học tập hàng ngày
     initReminderWorker();
-    
+
     // Khởi tạo worker sinh đề luyện tập hàng ngày
     initDailyPracticeWorker();
-    
+
     // Khởi tạo worker tự động kiểm duyệt bộ từ vựng công khai
     initModerationWorker();
-    
-    app.listen(PORT, () => {
+
+    httpServer.listen(PORT, () => {
       console.log(`✅ Server running at http://localhost:${PORT}`);
       console.log(`📚 Swagger UI: http://localhost:${PORT}/api-docs`);
+      console.log(`🔌 Socket.IO ready`);
       printDevBanner();
-      
+
       // Chạy dọn dẹp blacklist mỗi 1 giờ
       setInterval(cleanExpiredTokens, 60 * 60 * 1000);
     });
@@ -57,4 +66,3 @@ const startServer = async () => {
 };
 
 startServer();
-

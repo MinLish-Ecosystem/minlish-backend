@@ -7,7 +7,12 @@ export interface INotification extends Document {
     | "review_due"
     | "streak_milestone"
     | "achievement"
-    | "system";
+    | "system"
+    | "report"
+    | "ai_moderation"
+    | "posts_interaction"
+    | "post_moderation"
+    | "vocab_moderation";
   title: string;
   message: string;
   isRead: boolean;
@@ -34,6 +39,9 @@ const NotificationSchema = new Schema<INotification>(
         "system",
         "report",
         "ai_moderation",
+        "posts_interaction",
+        "post_moderation",
+        "vocab_moderation",
       ],
       required: true,
     },

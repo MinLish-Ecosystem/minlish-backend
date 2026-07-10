@@ -6,6 +6,7 @@ dist/
 
 # Environment variables — KHÔNG bao giờ commit file này!
 .env
+.env.test
 
 # Logs
 logs/
@@ -21,3 +22,15 @@ Thumbs.db
 .idea/
 
 minlish-frontend/
+
+# Benchmark output — chỉ dùng local, không commit
+benchmark/results/
+
+# Personal Files
+NguyenNgocThaiBao_Digitech.docx
+~$*.docx
+
+# Markdown Documentation (except README.md)
+CONTRIBUTING.md
+implementation_plan.md
+Phase0.md

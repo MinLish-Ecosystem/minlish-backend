@@ -595,10 +595,13 @@ export const updatePost = catchAsync(async (req: Request, res: Response) => {
 
     await Notification.create({
       userId: post.author,
-      type: 'system',
+      type: 'post_moderation',
       title: notifTitle,
       message: notifMsg,
-      isRead: false
+      isRead: false,
+      data: {
+        postId: post._id.toString()
+      }
     });
   }
 

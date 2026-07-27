@@ -10,6 +10,7 @@ import statsRoutes from './stats.routes';
 import practiceRoutes from './practice.routes';
 import postRoutes from './post.routes';
 import reportRoutes from './report.routes';
+import dictionaryRoutes from './dictionary.routes';
 
 /**
  * Router gốc — Mount tất cả sub-routers vào đây
@@ -40,5 +41,6 @@ router.use('/stats', statsRoutes);
 router.use('/practice', practiceRoutes);
 router.use('/posts', postRoutes);
 router.use('/reports', reportRoutes);
+router.use('/dictionary', dictionaryRoutes);
 
 export default router;

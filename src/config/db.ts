@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Set DNS tường minh — giống hệt pattern đã hoạt động trong project cũ
+// Set DNS
 try {
   dns.setServers(["1.1.1.1", "8.8.8.8"]);
   console.log("✓ Custom DNS servers set successfully.");
@@ -12,40 +12,60 @@ try {
   console.error("⚠ Could not set custom DNS servers:", err.message);
 }
 
-/**
- * Kết nối MongoDB
- * Đọc từ MONGO_URI trong .env (hỗ trợ cả Atlas và Local)
- */
-export const connectDB = async (): Promise<void> => {
-  const mongoUri = process.env.MONGO_URI_ATLAS || process.env.MONGO_URI_LOCAL;
+// Connection options
+const connectionOptions = {
+  maxPoolSize: 50,
+  minPoolSize: 10,
+  socketTimeoutMS: 45000,
+  serverSelectionTimeoutMS: 5000,
+};
 
-  if (!mongoUri) {
-    console.error("✗ Fatal Error: MONGO_URI_ATLAS and MONGO_URI_LOCAL are not defined in .env");
-    process.exit(1);
+// Try to connect to a MongoDB URI
+const tryConnect = async (uri: string, name: string): Promise<boolean> => {
+  try {
+    await mongoose.connect(uri, connectionOptions);
+    console.log(`✓ Connected to ${name}`);
+    console.log(`Database: ${mongoose.connection.name}`);
+    return true;
+  } catch (error: any) {
+    console.error(`✗ Failed to connect to ${name}:`, error.message);
+    return false;
+  }
+};
+
+export const connectDB = async (): Promise<void> => {
+  const atlasUri = process.env.MONGO_URI_ATLAS;
+  const localUri = process.env.MONGO_URI_LOCAL || "mongodb://localhost:27017/minlish";
+
+  // If no Atlas URI, use local directly
+  if (!atlasUri) {
+    console.warn("⚠ MONGO_URI_ATLAS not set, using local MongoDB...");
+    const success = await tryConnect(localUri, "MongoDB Local");
+    if (!success) {
+      console.error("✗ Fatal: Cannot connect to local MongoDB");
+      process.exit(1);
+    }
+    return;
   }
 
-  const isAtlas = mongoUri.includes("mongodb+srv");
-  const connType = isAtlas ? "MongoDB Atlas (Cloud)" : "MongoDB Local";
+  // Try Atlas first
+  console.log("🔄 Attempting to connect to MongoDB Atlas...");
+  let success = await tryConnect(atlasUri, "MongoDB Atlas");
 
-  try {
-    await mongoose.connect(mongoUri, {
-      maxPoolSize: 50,          // Default là 5 — tránh bottleneck kết nối dưới tải cao
-      minPoolSize: 10,          // Duy trì sẵn 10 kết nối để tránh tình trạng cold start
-      socketTimeoutMS: 45000,
-      serverSelectionTimeoutMS: 5000,
-    });
-    console.log(
-      `✓ Connection to ${connType} has been established successfully.`,
-    );
-    console.log(`Database: ${mongoose.connection.name}`);
-  } catch (error: any) {
-    console.error("✗ Unable to connect to the database:", error.message);
-    if (!process.env.MONGO_URI) {
-      console.error("\n⚠ Tip: Using local MongoDB. To use MongoDB Atlas:");
-      console.error("1. Get connection string from MongoDB Atlas");
-      console.error("2. Add MONGO_URI=mongodb+srv://... to .env file");
-      console.error("3. Restart the application\n");
-    }
-    throw error;
+  if (success) {
+    return;
+  }
+
+  // Fallback to Local
+  console.warn("⚠ Atlas connection failed, falling back to local MongoDB...");
+  success = await tryConnect(localUri, "MongoDB Local");
+
+  if (!success) {
+    console.error("✗ Fatal: Cannot connect to any MongoDB");
+    console.error("Please check:");
+    console.error("1. MongoDB Atlas credentials in .env");
+    console.error("2. Local MongoDB is running");
+    console.error("3. Network connection");
+    process.exit(1);
   }
 };

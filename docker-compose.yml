@@ -1,0 +1,148 @@
+﻿# ============================================
+# Minlish Backend - Docker Compose
+# Default: App + Redis (MongoDB via Atlas online)
+# With local MongoDB: docker-compose --profile local up
+# ============================================
+
+version: "3.9"
+
+services:
+  # ----- Application (Always runs) -----
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET:-development}
+    container_name: minlish-app
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      
+      # MongoDB Atlas (from .env)
+      MONGO_URI: ${MONGO_URI_ATLAS}
+      MONGO_URI_LOCAL: ${MONGO_URI_LOCAL:-mongodb://localhost:27017/minlish}
+      MONGO_URI_ATLAS: ${MONGO_URI_ATLAS}
+      
+      # JWT
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-your_super_secret_access_key_here}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your_super_secret_refresh_key_here}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      
+      # Redis
+      REDIS_URL: redis://redis:6379
+      
+      # Cloudinary
+      CLOUDINARY_URL: ${CLOUDINARY_URL:-}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      
+      # Email
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      MAIL_USER: ${MAIL_USER:-}
+      MAIL_PASS: ${MAIL_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@minlish.com}
+      
+      # FCM
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_PRIVATE_KEY: ${FCM_PRIVATE_KEY:-}
+      FCM_CLIENT_EMAIL: ${FCM_CLIENT_EMAIL:-}
+      
+      # Frontend
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+    volumes:
+      - ./src:/app/src:ro
+      - ./.env:/app/.env:ro
+    depends_on:
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - minlish-network
+
+  # ----- Redis Cache (Always runs) -----
+  redis:
+    image: redis:7-alpine
+    container_name: minlish-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - minlish-network
+
+  # ----- MongoDB Local (OPTIONAL - use profile local) -----
+  # Run with: docker-compose --profile local up
+  mongo:
+    image: mongo:7.0
+    container_name: minlish-mongo
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-password}
+      MONGO_INITDB_DATABASE: minlish
+    volumes:
+      - mongo-data:/data/db
+      - ./docker/mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - minlish-network
+    profiles:
+      - local
+
+  # ----- MongoDB Express (OPTIONAL - use profile admin) -----
+  # Run with: docker-compose --profile admin up
+  mongo-express:
+    image: mongo-express:latest
+    container_name: minlish-mongo-express
+    ports:
+      - "${MONGO_EXPRESS_PORT:-8081}:8081"
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_ROOT_USER:-admin}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_ROOT_PASSWORD:-password}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - minlish-network
+    profiles:
+      - admin
+
+# ----- Volumes -----
+volumes:
+  mongo-data:
+    driver: local
+  redis-data:
+    driver: local
+
+# ----- Network -----
+networks:
+  minlish-network:
+    driver: bridge

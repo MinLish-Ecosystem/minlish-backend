@@ -11,6 +11,7 @@ import practiceRoutes from './practice.routes';
 import postRoutes from './post.routes';
 import reportRoutes from './report.routes';
 import dictionaryRoutes from './dictionary.routes';
+import voiceAiRoutes from './voice-ai.routes';
 
 /**
  * Router gốc — Mount tất cả sub-routers vào đây
@@ -22,6 +23,7 @@ import dictionaryRoutes from './dictionary.routes';
  *   /api/v1/vocab/...         → vocab.routes.ts
  *   /api/v1/notifications/... → notification.routes.ts
  *   /api/v1/stats/...         → stats.routes.ts
+ *   /api/v1/voice-ai/...      → voice-ai.routes.ts (UC-13)
  *
  * Khi thêm module mới (ví dụ: lessons, vocabulary...):
  *   1. Tạo file src/routes/lesson.routes.ts
@@ -42,5 +44,7 @@ router.use('/practice', practiceRoutes);
 router.use('/posts', postRoutes);
 router.use('/reports', reportRoutes);
 router.use('/dictionary', dictionaryRoutes);
+router.use('/voice-ai', voiceAiRoutes);
 
 export default router;
+

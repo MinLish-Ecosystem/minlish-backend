@@ -7,6 +7,7 @@ import {
   adminPaginationSchema,
   adminIdParamSchema,
   resetUserAuthSchema,
+  updateConfigSchema,
 } from '../validators/admin.schema';
 import {
 	listUsersController,
@@ -397,7 +398,7 @@ router.get('/audit-logs', validateZod(adminPaginationSchema), getAuditLogsContro
 
 // System Configuration
 router.get('/config', getSystemConfigController);
-router.put('/config', updateSystemConfigController);
+router.put('/config', validateZod(updateConfigSchema), updateSystemConfigController);
 
 // System Health
 /**

@@ -11,8 +11,9 @@ import { UserProfile } from '../models/UserProfile';
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Tính current streak và longest streak dựa vào lịch sử DailyStats
- * Streak tính theo ngày liên tiếp có wordsReviewed > 0
+ * Tính current streak và longest streak dựa vào lịch sử DailyStats.
+ * 1 ngày được tính là active nếu có ôn từ (wordsReviewed > 0)
+ * HOẶC có luyện nói voice-ai (voiceUtterances > 0).
  */
 function calcStreak(stats: any[]): { current: number; longest: number } {
   let streak = 0;
@@ -20,10 +21,13 @@ function calcStreak(stats: any[]): { current: number; longest: number } {
   const checkDate = new Date();
   checkDate.setHours(0, 0, 0, 0);
 
+  const isActiveDay = (stat: any): boolean =>
+    (stat.wordsReviewed ?? 0) > 0 || (stat.voiceUtterances ?? 0) > 0;
+
   for (const stat of stats) {
     const d = new Date(stat.date);
     d.setHours(0, 0, 0, 0);
-    if (d.getTime() === checkDate.getTime() && stat.wordsReviewed > 0) {
+    if (d.getTime() === checkDate.getTime() && isActiveDay(stat)) {
       streak++;
       checkDate.setDate(checkDate.getDate() - 1);
       longest = Math.max(longest, streak);

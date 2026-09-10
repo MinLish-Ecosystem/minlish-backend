@@ -4,6 +4,7 @@ import { isBlacklisted } from '../utils/tokenBlacklist';
 import { AppError } from '../utils/AppError';
 import { ErrorCodes } from '../constants/errorCodes';
 import { HttpStatus } from '../constants/httpStatus';
+import { User } from '../models/User';
 
 /**
  * Middleware xác thực Access Token
@@ -57,4 +58,30 @@ export const requireAdmin = (req: Request, _res: Response, next: NextFunction): 
     return next(new AppError('Access denied. Admin role required.', HttpStatus.FORBIDDEN, ErrorCodes.FORBIDDEN));
   }
   next();
+};
+
+/**
+ * Middleware gating Learner cho tính năng học (UC-14 Reading, FR-110/FR-114).
+ * PHẢI đặt SAU verifyToken. JWT payload không chứa isVerified/isActive
+ * → phải tra DB để chặn tài khoản chưa xác thực hoặc bị ban (api-spec UC-14 §Common).
+ */
+export const verifyLearner = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.user?.id) {
+      return next(new AppError('Access denied. No token provided.', HttpStatus.UNAUTHORIZED, ErrorCodes.TOKEN_MISSING));
+    }
+    const user = await User.findById(req.user.id).select('isVerified isActive').lean();
+    if (!user) {
+      return next(new AppError('User not found.', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED));
+    }
+    if (!user.isVerified) {
+      return next(new AppError('Email not verified.', HttpStatus.FORBIDDEN, ErrorCodes.EMAIL_NOT_VERIFIED));
+    }
+    if (!user.isActive) {
+      return next(new AppError('Account has been banned.', HttpStatus.FORBIDDEN, ErrorCodes.USER_BANNED));
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
 };

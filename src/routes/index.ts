@@ -11,6 +11,9 @@ import practiceRoutes from './practice.routes';
 import postRoutes from './post.routes';
 import reportRoutes from './report.routes';
 import dictionaryRoutes from './dictionary.routes';
+import voiceAiRoutes from './voice-ai.routes';
+import skillsReadingRoutes from './skills-reading.routes';
+import adminSkillsReadingRoutes from './admin-skills-reading.routes';
 
 /**
  * Router gốc — Mount tất cả sub-routers vào đây
@@ -22,6 +25,7 @@ import dictionaryRoutes from './dictionary.routes';
  *   /api/v1/vocab/...         → vocab.routes.ts
  *   /api/v1/notifications/... → notification.routes.ts
  *   /api/v1/stats/...         → stats.routes.ts
+ *   /api/v1/voice-ai/...      → voice-ai.routes.ts (UC-13)
  *
  * Khi thêm module mới (ví dụ: lessons, vocabulary...):
  *   1. Tạo file src/routes/lesson.routes.ts
@@ -29,6 +33,9 @@ import dictionaryRoutes from './dictionary.routes';
  */
 
 const router = Router();
+
+// UC-14 Reading — mount cụ thể TRƯỚC '/admin' để không đi qua guard admin.routes 2 lần
+router.use('/admin/skills/reading', adminSkillsReadingRoutes);
 
 router.use('/auth', authRoutes);
 router.use('/user', userRoutes);
@@ -42,5 +49,8 @@ router.use('/practice', practiceRoutes);
 router.use('/posts', postRoutes);
 router.use('/reports', reportRoutes);
 router.use('/dictionary', dictionaryRoutes);
+router.use('/voice-ai', voiceAiRoutes);
+router.use('/skills/reading', skillsReadingRoutes);
 
 export default router;
+

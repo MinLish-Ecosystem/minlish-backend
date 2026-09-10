@@ -9,7 +9,7 @@ import { DailyStats } from '../models/DailyStats';
 import { Notification } from '../models/Nofitication';
 import { FCMToken } from '../models/FCMToken';
 import { OTP } from '../models/OTP';
-import { AdminAuditLog } from '../models/AdminAuditLog';
+import { AdminAuditLog, IAdminAuditLog } from '../models/AdminAuditLog';
 import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
@@ -222,6 +222,30 @@ export async function unpublishSet(adminId: string, setId: string, reason?: stri
   const before = { isPublic: set.isPublic };
   await VocabularySet.findByIdAndUpdate(setId, { $set: { isPublic: false } });
   await AdminAuditLog.create({ adminId: new Types.ObjectId(adminId), action: 'unpublish_set', targetId: new Types.ObjectId(setId), targetType: 'set', reason, before, after: { isPublic: false } });
+}
+
+/**
+ * Ghi AdminAuditLog cho một mutation Admin (NFR-019). Owner của aggregate `AdminAuditLog`
+ * là admin.service — module khác (UC-14 reading) gọi qua đây, không ghi tắt (AD-3).
+ */
+export async function logAction(params: {
+  adminId: string;
+  action: IAdminAuditLog['action'];
+  targetId: string;
+  targetType: IAdminAuditLog['targetType'];
+  reason?: string;
+  before?: object | null;
+  after?: object | null;
+}) {
+  return AdminAuditLog.create({
+    adminId: new Types.ObjectId(params.adminId),
+    action: params.action,
+    targetId: new Types.ObjectId(params.targetId),
+    targetType: params.targetType,
+    reason: params.reason,
+    before: params.before ?? undefined,
+    after: params.after ?? undefined,
+  });
 }
 
 export async function getAuditLogs(page = 1, limit = 50) {

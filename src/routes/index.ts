@@ -12,6 +12,7 @@ import postRoutes from './post.routes';
 import reportRoutes from './report.routes';
 import dictionaryRoutes from './dictionary.routes';
 import voiceAiRoutes from './voice-ai.routes';
+import listeningRoutes, { listeningAdminRouter } from './listening.routes';
 
 /**
  * Router gốc — Mount tất cả sub-routers vào đây
@@ -34,7 +35,6 @@ const router = Router();
 
 router.use('/auth', authRoutes);
 router.use('/user', userRoutes);
-router.use('/admin', adminRoutes);
 router.use('/vocab', vocabRoutes);
 router.use('/learning', learningRoutes);
 router.use('/sync', syncRoutes);
@@ -45,6 +45,10 @@ router.use('/posts', postRoutes);
 router.use('/reports', reportRoutes);
 router.use('/dictionary', dictionaryRoutes);
 router.use('/voice-ai', voiceAiRoutes);
+router.use('/skills/listening', listeningRoutes);              // UC-15 learner
+// UC-15 admin CRUD — mount TRƯỚC '/admin' để không chạy đúp verifyToken+requireAdmin
+router.use('/admin/skills/listening', listeningAdminRouter);
+router.use('/admin', adminRoutes);
 
 export default router;
 

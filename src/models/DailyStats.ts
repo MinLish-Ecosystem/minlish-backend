@@ -13,6 +13,8 @@ export interface IDailyStats extends Document {
   voiceUtterances: number;
   /** Voice AI: số phiên hoàn thành (đạt targetScore) trong ngày. */
   voiceSessions: number;
+  /** UC-15 Listening: số phiên Listening đã Finish trong ngày (batch write 1 lần/phiên). */
+  listeningSessions: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,6 +66,11 @@ const DailyStatsSchema = new Schema<IDailyStats>(
       min: 0,
     },
     voiceSessions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    listeningSessions: {
       type: Number,
       default: 0,
       min: 0,

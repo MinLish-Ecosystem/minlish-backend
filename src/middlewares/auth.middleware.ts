@@ -4,6 +4,7 @@ import { isBlacklisted } from '../utils/tokenBlacklist';
 import { AppError } from '../utils/AppError';
 import { ErrorCodes } from '../constants/errorCodes';
 import { HttpStatus } from '../constants/httpStatus';
+import { User } from '../models/User';
 
 /**
  * Middleware xác thực Access Token
@@ -57,4 +58,38 @@ export const requireAdmin = (req: Request, _res: Response, next: NextFunction): 
     return next(new AppError('Access denied. Admin role required.', HttpStatus.FORBIDDEN, ErrorCodes.FORBIDDEN));
   }
   next();
+};
+
+/**
+ * Middleware gate tính năng học: email đã verify + tài khoản active (NFR-018).
+ * PHẢI đặt SAU verifyToken. Trạng thái đọc tươi từ DB mỗi request vì JWT
+ * không mang isVerified/isActive — admin có thể ban user giữa phiên (AF-06/AC-13).
+ * Dùng cho UC-15 Listening: isVerified=false → ERR_EMAIL_NOT_VERIFIED,
+ * isActive=false → ERR_USER_BANNED.
+ */
+export const requireActiveVerified = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new AppError('Access denied. No token provided.', HttpStatus.UNAUTHORIZED, ErrorCodes.TOKEN_MISSING);
+    }
+
+    const user = await User.findById(userId).select('isVerified isActive').lean();
+    if (!user) {
+      throw new AppError('User not found.', HttpStatus.UNAUTHORIZED, ErrorCodes.TOKEN_INVALID);
+    }
+    if (!user.isVerified) {
+      throw new AppError(
+        'Vui lòng xác thực email để luyện Listening.',
+        HttpStatus.FORBIDDEN,
+        ErrorCodes.EMAIL_NOT_VERIFIED,
+      );
+    }
+    if (user.isActive === false) {
+      throw new AppError('Tài khoản của bạn đã bị vô hiệu hóa.', HttpStatus.FORBIDDEN, ErrorCodes.USER_BANNED);
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
 };

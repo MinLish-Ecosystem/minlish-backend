@@ -2,6 +2,7 @@ import { VoiceAITier, IVoiceAITier, ComponentFormat } from '../models/Model';
 import { getOrCreateSystemConfig } from '../models/SystemConfig';
 import { DailyStats } from '../models/DailyStats';
 import { Types } from 'mongoose';
+import { createHash } from 'node:crypto';
 import { AppError } from '../utils/AppError';
 import { HttpStatus } from '../constants/httpStatus';
 import { ErrorCodes } from '../constants/errorCodes';
@@ -37,6 +38,8 @@ export interface TierDownloadResponse {
     tts: ComponentDownload;
   };
   totalSizeMB: number;
+  /** Fingerprint cache weights — FE lưu vào meta lúc tải; lệch version → purge + tải lại. */
+  weightsVersion: string;
 }
 
 /** Catalog DTO — đã strip megaFileId/files (api-spec §1.1: ComponentDto = {name, sizeMB} + format). */
@@ -51,6 +54,8 @@ export interface SanitizedTier {
     tts: { name: string; sizeMB: number; format: ComponentFormat };
   };
   totalSizeMB: number;
+  /** Fingerprint weights (hash 1 chiều megaFileId+sizeMB) — FE so với meta cache để phát hiện admin đã up weights mới. */
+  weightsVersion: string;
   status: IVoiceAITier['status'];
   createdAt: Date;
   updatedAt: Date;
@@ -79,6 +84,28 @@ function sortTiersByOrder(tiers: IVoiceAITier[]): IVoiceAITier[] {
 function resolveSystemPrompt(): string {
   const fromEnv = (env.VOICE_AI_SYSTEM_PROMPT || '').trim();
   return fromEnv || DEFAULT_VOICE_AI_SYSTEM_PROMPT;
+}
+
+/**
+ * Fingerprint weights của 1 tier — hash 1 chiều (sha256, 16 hex đầu) từ
+ * megaFileId + sizeMB của mọi file trong 3 components. Admin up weights
+ * (cùng tierId, megaFileId mới) → version đổi → FE purge + tải lại.
+ * Hash KHÔNG đảo ngược được nên expose trên catalog vẫn an toàn.
+ */
+export function computeWeightsVersion(tier: IVoiceAITier): string {
+  const hash = createHash('sha256');
+  for (const key of ['stt', 'llm', 'tts'] as const) {
+    const comp = tier.components[key] as any;
+    if (!comp) continue;
+    const files: Array<{ megaFileId?: string; sizeMB?: number }> =
+      Array.isArray(comp.files) && comp.files.length > 0
+        ? comp.files
+        : [{ megaFileId: comp.megaFileId, sizeMB: comp.sizeMB }];
+    for (const f of files) {
+      hash.update(`${key}|${f.megaFileId ?? ''}|${f.sizeMB ?? 0};`);
+    }
+  }
+  return hash.digest('hex').slice(0, 16);
 }
 
 /**
@@ -111,6 +138,7 @@ export async function getTier(id: string): Promise<SanitizedTier> {
 /**
  * Strip fields nhạy cảm khỏi response catalog/detail (api-spec §1.1 ComponentDto = {name, sizeMB}).
  * megaFileId + files[].megaFileId chỉ expose qua GET /model/download (đã qua verifyToken + rate limit).
+ * weightsVersion (hash 1 chiều) trả kèm để FE phát hiện admin up weights mới.
  */
 function sanitizeTier(tier: IVoiceAITier): SanitizedTier {
   const t = tier.toObject() as any;
@@ -120,6 +148,7 @@ function sanitizeTier(tier: IVoiceAITier): SanitizedTier {
       t.components[key] = { name, sizeMB, format };
     }
   }
+  t.weightsVersion = computeWeightsVersion(tier);
   return t as SanitizedTier;
 }
 
@@ -181,6 +210,7 @@ export async function getTierDownload(id: string): Promise<TierDownloadResponse>
       tts: toComponentDownload(tier._id.toString(), 'tts', tier.components.tts as any),
     },
     totalSizeMB: tier.totalSizeMB,
+    weightsVersion: computeWeightsVersion(tier),
   };
 }
 

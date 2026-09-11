@@ -9,6 +9,10 @@ export interface IDailyStats extends Document {
   totalAnswers: number;
   timeSpent: number; // Seconds
   streak: number;
+  /** Voice AI: số câu đã nói được chấm trong ngày (ghi khi xong phiên, FE rule-based). */
+  voiceUtterances: number;
+  /** Voice AI: số phiên hoàn thành (đạt targetScore) trong ngày. */
+  voiceSessions: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -50,6 +54,16 @@ const DailyStatsSchema = new Schema<IDailyStats>(
       min: 0,
     },
     streak: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    voiceUtterances: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    voiceSessions: {
       type: Number,
       default: 0,
       min: 0,

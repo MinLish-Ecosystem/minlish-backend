@@ -48,6 +48,26 @@ export const adminPaginationSchema = z.object({
   }),
 });
 
+// ─── Update System Config Schema ─────────────────────────────────────────────
+// Whitelist các field admin được sửa qua PUT /admin/config (chặn ghi bậy field lạ).
+// voiceAiSystemPrompt (UC-13 BR-02): prompt hội thoại Voice AI, FE kéo về mỗi lần mở voice-chat.
+
+export const updateConfigSchema = z.object({
+  body: z.object({
+    maintenanceMode: z.boolean().optional(),
+    mailerActive: z.boolean().optional(),
+    cloudinaryActive: z.boolean().optional(),
+    otpLength: z.union([z.literal(4), z.literal(6), z.literal(8)]).optional(),
+    sessionExpiry: z.enum(['1h', '4h', '12h', '24h', '7d']).optional(),
+    enforceMfaAdmin: z.boolean().optional(),
+    srsGlobalRetentionTarget: z.number().int().min(70).max(95).optional(),
+    srsInitialInterval: z.number().int().min(4).max(48).optional(),
+    moderationInterval: z.number().int().min(1).max(24).optional(),
+    aiModerationGuidelines: z.string().trim().max(5000).optional(),
+    voiceAiSystemPrompt: z.string().trim().min(10).max(4000).optional(),
+  }),
+});
+
 // ─── Reset Auth Schema ───────────────────────────────────────────────────────
 
 export const resetUserAuthSchema = z.object({

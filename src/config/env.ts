@@ -23,10 +23,11 @@ const envSchema = z.object({
     (value) => (typeof value === 'string' ? value.trim() : value),
     z.string().email()
   ),
-  MAIL_PASS: z.preprocess(
-    (value) => (typeof value === 'string' ? value.replace(/\s+/g, '').trim() : value),
-    z.string().min(1)
-  ),
+  // Voice AI (UC-13)
+  // Base URL CDN/Storage build link tải weights — nối với megaFileId: `${VOICE_AI_CDN_URL}/${megaFileId}`
+  VOICE_AI_CDN_URL: z.string().url().default('https://mega.nz/file/'),
+  // Fallback system prompt khi SystemConfig.voiceAiSystemPrompt rỗng (BR-02)
+  VOICE_AI_SYSTEM_PROMPT: z.string().optional(),
 }).refine(data => data.MONGO_URI_LOCAL || data.MONGO_URI_ATLAS, {
   message: "Either MONGO_URI_LOCAL or MONGO_URI_ATLAS must be provided",
   path: ["MONGO_URI"],

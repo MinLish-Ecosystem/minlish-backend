@@ -2,9 +2,9 @@ import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IAdminAuditLog extends Document {
   adminId:    Types.ObjectId;
-  action:     'ban_user' | 'unban_user' | 'delete_user' | 'unpublish_set' | 'approve_set' | 'reject_set';
+  action:     'ban_user' | 'unban_user' | 'delete_user' | 'unpublish_set' | 'approve_set' | 'reject_set' | 'reset_user_auth' | 'READING_Q_CREATE' | 'READING_Q_UPDATE' | 'READING_Q_DELETE';
   targetId:   Types.ObjectId;
-  targetType: 'user' | 'set' | 'word';
+  targetType: 'user' | 'set' | 'word' | 'post' | 'reading_question';
   reason?:    string;
   before?:    object;
   after?:     object;

@@ -65,6 +65,16 @@ export const updateConfigSchema = z.object({
     moderationInterval: z.number().int().min(1).max(24).optional(),
     aiModerationGuidelines: z.string().trim().max(5000).optional(),
     voiceAiSystemPrompt: z.string().trim().min(10).max(4000).optional(),
+    // UC-17 (CON-09/BR-04): rubric chấm Writing — admin sửa được không cần deploy.
+    // Merge từng scale (chỉ gửi TOEIC thì giữ nguyên IELTS) — controller ghép đè
+    // lên giá trị hiện tại, tránh .set() thay cả object làm mất scale còn lại.
+    writingRubrics: z
+      .object({
+        TOEIC: z.string().trim().min(10, 'TOEIC rubric is required').max(8000),
+        IELTS: z.string().trim().min(10, 'IELTS rubric is required').max(8000),
+      })
+      .partial()
+      .optional(),
   }),
 });
 

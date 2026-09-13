@@ -4,6 +4,7 @@ import { isBlacklisted } from '../utils/tokenBlacklist';
 import { AppError } from '../utils/AppError';
 import { ErrorCodes } from '../constants/errorCodes';
 import { HttpStatus } from '../constants/httpStatus';
+import { User } from '../models/User';
 
 /**
  * Middleware xác thực Access Token
@@ -57,4 +58,27 @@ export const requireAdmin = (req: Request, _res: Response, next: NextFunction): 
     return next(new AppError('Access denied. Admin role required.', HttpStatus.FORBIDDEN, ErrorCodes.FORBIDDEN));
   }
   next();
+};
+
+/**
+ * UC-17 (CON-04) — Gating learner practice: chặn isVerified=false và isActive=false.
+ * verifyToken chỉ decode JWT không DB-check nên ở đây query User để chặn state mới nhất
+ * (ban sau khi phát token, verify sau khi phát token). Đặt SAU verifyToken.
+ */
+export const requireVerifiedUser = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const user = await User.findById(req.user?.id).select('isVerified isActive banReason').lean();
+    if (!user) {
+      throw new AppError('User not found', HttpStatus.UNAUTHORIZED, ErrorCodes.UNAUTHORIZED);
+    }
+    if ((user as any).isActive === false) {
+      throw new AppError('Account has been suspended', HttpStatus.FORBIDDEN, ErrorCodes.USER_BANNED);
+    }
+    if (!(user as any).isVerified) {
+      throw new AppError('Email not verified', HttpStatus.FORBIDDEN, ErrorCodes.EMAIL_NOT_VERIFIED);
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
 };

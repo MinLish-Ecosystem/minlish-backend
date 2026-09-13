@@ -308,11 +308,20 @@ export const updateSystemConfigController = catchAsync(async (req: Request, res:
   if (!config) {
     config = await SystemConfig.create({});
   }
-
   const oldInterval = config.moderationInterval;
-  
+
+  // UC-17: writingRubrics là object lồng — merge từng scale thay vì .set() thay cả
+  // object (PUT chỉ gửi {TOEIC} thì giữ nguyên IELTS hiện tại)
+  const { writingRubrics, ...restBody } = req.body;
+  if (writingRubrics) {
+    config.writingRubrics = {
+      ...(config.writingRubrics ?? {}),
+      ...writingRubrics,
+    } as typeof config.writingRubrics;
+  }
+
   // Cập nhật cấu hình
-  config.set(req.body);
+  config.set(restBody);
   await config.save();
 
   // Nếu tần suất kiểm duyệt thay đổi, lên lịch lại background job

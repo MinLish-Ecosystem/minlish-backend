@@ -12,6 +12,10 @@ export interface ISystemConfig extends Document {
   moderationInterval: number;       // 1-24 hours
   aiModerationGuidelines: string;  // prompt guidelines for Gemini API
   voiceAiSystemPrompt: string;     // UC-13 (BR-02): system prompt LLM Voice AI — admin sửa được qua /admin/config
+  writingRubrics: {
+    TOEIC: string; // UC-17 (BR-04/CON-09): rubric chấm TOEIC 0–5 cho Gemini prompt
+    IELTS: string; // UC-17: rubric chấm IELTS 0–9 cho Gemini prompt
+  } | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -96,6 +100,15 @@ Examples:
 repair → "Have you ever tried to repair something at home?"
 discover → "What is something interesting you discovered recently?"
 improve → "What skill would you like to improve?"`,
+    },
+    writingRubrics: {
+      // UC-17 (CON-09): rubric lưu DB — admin sửa được không cần deploy, khớp pattern aiModerationGuidelines.
+      // null → W2 trả 502 AI_GRADING_FAILED + log cảnh báo (architecture.md §9 Migration).
+      type: {
+        TOEIC: { type: String },
+        IELTS: { type: String },
+      },
+      default: null,
     },
   },
   { timestamps: true }

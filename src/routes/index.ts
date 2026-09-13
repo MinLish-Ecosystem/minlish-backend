@@ -12,6 +12,8 @@ import postRoutes from './post.routes';
 import reportRoutes from './report.routes';
 import dictionaryRoutes from './dictionary.routes';
 import voiceAiRoutes from './voice-ai.routes';
+import writingRoutes from './writing.routes';
+import adminWritingRoutes from './adminWriting.routes';
 
 /**
  * Router gốc — Mount tất cả sub-routers vào đây
@@ -45,6 +47,8 @@ router.use('/posts', postRoutes);
 router.use('/reports', reportRoutes);
 router.use('/dictionary', dictionaryRoutes);
 router.use('/voice-ai', voiceAiRoutes);
+router.use('/skills/writing', writingRoutes); // UC-17 (Phương án A)
+router.use('/admin/skills/writing', adminWritingRoutes); // UC-17 W5
 
 export default router;
 

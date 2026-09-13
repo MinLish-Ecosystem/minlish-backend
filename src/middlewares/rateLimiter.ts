@@ -65,3 +65,21 @@ export const weightsStreamLimiter = rateLimit({
     message: 'Bạn đã vượt giới hạn tải weights (20 lần/giờ). Vui lòng thử lại sau.',
   },
 });
+
+/**
+ * UC-17 Writing — Rate limit POST /grade (AF-06: 10 req/phút/user).
+ * Key theo user id (đã qua verifyToken) — FE dùng chung NAT/công cộng.
+ * errorCode RATE_LIMIT_EXCEEDED khớp errorCodes.ts (api-spec W2).
+ */
+export const writingGradeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => req.user?.id ?? req.ip ?? 'unknown',
+  message: {
+    success: false,
+    errorCode: 'ERR_RATE_LIMIT_EXCEEDED',
+    message: 'Bạn đã đạt giới hạn chấm bài trong khoảng thời gian này.',
+  },
+});

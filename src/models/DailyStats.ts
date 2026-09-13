@@ -13,6 +13,8 @@ export interface IDailyStats extends Document {
   voiceUtterances: number;
   /** Voice AI: số phiên hoàn thành (đạt targetScore) trong ngày. */
   voiceSessions: number;
+  /** UC-17 Writing: số bài Writing đã nộp trong ngày (tăng khi submit lô thành công — CAP-07). */
+  writingSubmissions: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,6 +66,12 @@ const DailyStatsSchema = new Schema<IDailyStats>(
       min: 0,
     },
     voiceSessions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    writingSubmissions: {
+      // UC-17 (CAP-07): tăng theo số attempt ghi lô thành công — active-day cho streak
       type: Number,
       default: 0,
       min: 0,
